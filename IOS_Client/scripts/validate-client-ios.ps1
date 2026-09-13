@@ -100,6 +100,7 @@ $homeSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Home\Cli
 $workoutExecution = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Workout\ClientWorkoutExecutionView.swift') -Raw
 $health = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\HealthKitStepService.swift') -Raw
 $locationSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\RunningLocationService.swift') -Raw
+$liveActivityManager = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientRunLiveActivityManager.swift') -Raw
 $locationInitializer = [regex]::Match($locationSource, '(?s)override init\(\)\s*\{(?<body>.*?)\n\s*\}').Groups['body'].Value
 $running = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Running\ClientRunningView.swift') -Raw
 $nutrition = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Nutrition\ClientNutritionView.swift') -Raw
@@ -114,6 +115,7 @@ Assert-Check ($health -notmatch 'requestAccessAndRefresh\(\).*init') 'HealthKit 
 Assert-Check ($swift -match 'endsAt: Date\?' -and $swift -match 'timeIntervalSince\(date\)') 'Rest timer authority is a persisted timestamp rather than a decrement counter'
 Assert-Check ($info -match 'NSLocationWhenInUseUsageDescription' -and $locationSource -match 'requestWhenInUseAuthorization') 'Running uses disclosed When-In-Use location access'
 Assert-Check ($locationSource -match 'ObservableObject, @preconcurrency CLLocationManagerDelegate') 'Core Location delegate conformance is compatible with Swift 6 actor isolation'
+Assert-Check (([regex]::Matches($liveActivityManager, 'nonisolated\(unsafe\) let activityFor(Update|End)')).Count -eq 2) 'ActivityKit update and end isolate the Xcode 26.4 concurrency workaround'
 Assert-Check ($locationInitializer -notmatch 'requestWhenInUseAuthorization') 'Location permission is deferred until the Client starts a run'
 Assert-Check ($running -match 'MapPolyline' -and $running -match 'location\.distanceKm' -and $running -match 'RunningMetricMode') 'Running shows a live map, measured distance and selectable speed or pace'
 Assert-Check ($running -match 'onLongPressGesture' -and $running -match 'ClientRunningCompletionView' -and $running -match 'accessibilityReduceMotion') 'Running has protected finish, route replay and Reduce Motion support'

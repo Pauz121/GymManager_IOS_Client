@@ -42,7 +42,11 @@ final class ClientRunLiveActivityManager: ObservableObject {
         displayMode: String,
         force: Bool = false
     ) async {
-        guard let activity else { return }
+        guard let currentActivity = activity else { return }
+        // Xcode 26.4 marks ActivityKit update/end as @concurrent while
+        // Activity itself is not Sendable. ActivityKit owns synchronization;
+        // keep the escape hatch limited to this immutable SDK reference.
+        nonisolated(unsafe) let activityForUpdate = currentActivity
         let now = Date()
         guard force || now.timeIntervalSince(lastUpdateAt) >= 5 || abs(distanceMeters - lastDistanceMeters) >= 20 else { return }
         let state = makeState(
@@ -51,20 +55,21 @@ final class ClientRunLiveActivityManager: ObservableObject {
             isPaused: isPaused,
             displayMode: displayMode
         )
-        await activity.update(ActivityContent(state: state, staleDate: now.addingTimeInterval(30)))
+        await activityForUpdate.update(ActivityContent(state: state, staleDate: now.addingTimeInterval(30)))
         lastUpdateAt = now
         lastDistanceMeters = distanceMeters
     }
 
     func end(elapsedSeconds: TimeInterval, distanceMeters: Double, displayMode: String) async {
-        guard let activity else { return }
+        guard let currentActivity = activity else { return }
+        nonisolated(unsafe) let activityForEnd = currentActivity
         let finalState = makeState(
             distanceMeters: distanceMeters,
             elapsedSeconds: elapsedSeconds,
             isPaused: true,
             displayMode: displayMode
         )
-        await activity.end(
+        await activityForEnd.end(
             ActivityContent(state: finalState, staleDate: nil),
             dismissalPolicy: .after(Date().addingTimeInterval(120))
         )
