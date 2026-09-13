@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class RunningLocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
+final class RunningLocationService: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     enum State: Equatable {
         case idle
         case requestingPermission

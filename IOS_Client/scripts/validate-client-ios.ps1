@@ -104,6 +104,7 @@ Assert-Check ($health -match 'requestAccessAndRefresh' -and $health -match 'HKSt
 Assert-Check ($health -notmatch 'requestAccessAndRefresh\(\).*init') 'HealthKit permission is not requested during initialization'
 Assert-Check ($swift -match 'endsAt: Date\?' -and $swift -match 'timeIntervalSince\(date\)') 'Rest timer authority is a persisted timestamp rather than a decrement counter'
 Assert-Check ($info -match 'NSLocationWhenInUseUsageDescription' -and $locationSource -match 'requestWhenInUseAuthorization') 'Running uses disclosed When-In-Use location access'
+Assert-Check ($locationSource -match 'ObservableObject, @preconcurrency CLLocationManagerDelegate') 'Core Location delegate conformance is compatible with Swift 6 actor isolation'
 Assert-Check ($locationInitializer -notmatch 'requestWhenInUseAuthorization') 'Location permission is deferred until the Client starts a run'
 Assert-Check ($running -match 'MapPolyline' -and $running -match 'location\.distanceKm' -and $running -match 'RunningMetricMode') 'Running shows a live map, measured distance and selectable speed or pace'
 Assert-Check ($running -match 'onLongPressGesture' -and $running -match 'ClientRunningCompletionView' -and $running -match 'accessibilityReduceMotion') 'Running has protected finish, route replay and Reduce Motion support'

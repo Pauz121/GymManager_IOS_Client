@@ -96,7 +96,7 @@ Existing professional-data RLS and read filters are unchanged. No new remote tab
 
 ## 17. Tests
 
-- Static Client validator: PASS, 48 checks after app icon integration.
+- Static Client validator: PASS, 49 checks after the Swift 6 Core Location conformance correction.
 - Native XCTest definitions: 36.
 - Coverage includes identity/mode rules, Agenda and activity namespace isolation, persistence round-trip, day-scoped meal completion, timestamp rest timer, set parsing/log retention, route-only distance calculation, running pace/speed and capability gating.
 - Secret/service-role scan: no credential is present in Debug demo data; no service-role marker or professional-data writer exists in Client source.
