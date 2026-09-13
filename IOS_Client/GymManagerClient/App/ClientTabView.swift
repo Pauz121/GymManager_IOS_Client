@@ -7,6 +7,7 @@ struct ClientTabView: View {
     let snapshot: ClientSnapshot
     let source: ClientDataSource
     @State private var selectedTab: ClientTab = .today
+    @EnvironmentObject private var avatarStore: ClientAvatarStore
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -19,7 +20,14 @@ struct ClientTabView: View {
             NavigationStack { ClientProgressView(entries: snapshot.progress, identity: identity, source: source) }
                 .tabItem { Label("Progressi", systemImage: "chart.xyaxis.line") }.tag(ClientTab.progress)
             NavigationStack { PersonalSpaceView(identity: identity, snapshot: snapshot, source: source) }
-                .tabItem { Label("Spazio", systemImage: "person.crop.circle.fill") }.tag(ClientTab.space)
+                .tabItem {
+                    if let avatar = avatarStore.image(for: identity.authUserID) {
+                        Label { Text("Spazio") } icon: { Image(uiImage: avatar).renderingMode(.original) }
+                    } else {
+                        Label("Spazio", systemImage: "person.crop.circle.fill")
+                    }
+                }
+                .tag(ClientTab.space)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if source == .demo {
@@ -31,5 +39,6 @@ struct ClientTabView: View {
                     .allowsHitTesting(false)
             }
         }
+        .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }
     }
 }

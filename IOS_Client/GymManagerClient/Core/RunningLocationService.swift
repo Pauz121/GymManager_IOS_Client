@@ -52,6 +52,8 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
     func stopTracking() {
         shouldTrack = false
         manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+        manager.showsBackgroundLocationIndicator = false
         currentSpeedMetersPerSecond = nil
         if state != .denied, state != .restricted, state != .unavailable { state = .idle }
     }
@@ -59,6 +61,8 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
     func pauseTracking() {
         shouldTrack = false
         manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+        manager.showsBackgroundLocationIndicator = false
         currentSpeedMetersPerSecond = nil
         if state != .denied, state != .restricted, state != .unavailable { state = .idle }
     }
@@ -87,6 +91,8 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
     private func startAuthorizedTracking() {
         guard shouldTrack else { return }
         state = manager.accuracyAuthorization == .reducedAccuracy ? .reducedAccuracy : .tracking
+        manager.allowsBackgroundLocationUpdates = true
+        manager.showsBackgroundLocationIndicator = true
         manager.startUpdatingLocation()
     }
 

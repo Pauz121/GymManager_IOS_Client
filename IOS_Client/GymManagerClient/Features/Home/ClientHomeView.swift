@@ -16,24 +16,30 @@ struct ClientHomeView: View {
 
     private var todayNutrition: ClientNutritionDay? {
         snapshot.nutrition?.days.first { $0.weekday == ClientDateLogic.weekday(for: Date()) }
-            ?? snapshot.nutrition?.days.first
+            ?? (snapshot.nutrition?.days.count == 1 ? snapshot.nutrition?.days.first : nil)
     }
 
-    private var todayAgendaTask: PersonalAgendaTask? {
-        session.agenda.first { task in
-            !task.isCompleted && task.date.map { Calendar.current.isDateInToday($0) } == true
-        }
+    private var homeAgendaTasks: [PersonalAgendaTask] {
+        session.agenda
+            .filter { task in
+                guard let date = task.date else { return true }
+                return Calendar.current.isDateInToday(date)
+            }
+            .sorted {
+                if $0.isCompleted != $1.isCompleted { return !$0.isCompleted }
+                return ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture)
+            }
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                stepsCard
                 journey
                 Text("Oggi").font(.title2.weight(.bold)).foregroundStyle(ClientClay.ink)
                 workoutCard
                 nutritionCard
-                stepsCard
                 if identity.mode == .standalone { standaloneActions }
                 contextCards
 
@@ -138,16 +144,30 @@ struct ClientHomeView: View {
     @ViewBuilder private var nutritionCard: some View {
         if let nutrition = snapshot.nutrition, let day = todayNutrition, !day.meals.isEmpty {
             let completed = day.meals.filter { session.activity.isMealCompleted($0.id) }.count
-            VStack(alignment: .leading, spacing: 12) {
+            let completedCalories = day.meals
+                .filter { session.activity.isMealCompleted($0.id) }
+                .compactMap(\.caloriesKcal).reduce(0, +)
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Label("Nutrizione di oggi", systemImage: "leaf.fill").font(.headline).foregroundStyle(ClientClay.sage)
                     Spacer()
                     Button("Dettagli") { selectedTab = .nutrition }.font(.subheadline.weight(.semibold))
                 }
-                Text(nutrition.title).font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                ProgressView(value: Double(completed), total: Double(day.meals.count)).tint(ClientClay.sage)
-                Text("\(completed) / \(day.meals.count) pasti completati")
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                HStack(spacing: 16) {
+                    ClientCaloriePie(
+                        value: day.caloriesKcal == nil ? 0 : completedCalories,
+                        total: day.caloriesKcal ?? 1,
+                        valueText: day.caloriesKcal.map { "\(Int(completedCalories.rounded()))" } ?? "--",
+                        detail: day.caloriesKcal.map { "di \(Int($0.rounded())) kcal" } ?? "kcal non disponibili",
+                        size: 104
+                    )
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(nutrition.title).font(.subheadline.weight(.semibold))
+                        Text(day.name).font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        Text("\(completed) / \(day.meals.count) pasti")
+                            .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.sage)
+                    }
+                }
                 ForEach(day.meals) { meal in
                     mealToggle(meal)
                 }
@@ -167,6 +187,8 @@ struct ClientHomeView: View {
                 Text(meal.name).font(.body.weight(.medium)).foregroundStyle(ClientClay.ink)
                     .strikethrough(completed)
                 Spacer()
+                Text(meal.caloriesKcal.map { "\(Int($0.rounded())) kcal" } ?? "-- kcal")
+                    .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
             }
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -178,33 +200,32 @@ struct ClientHomeView: View {
 
     @ViewBuilder private var stepsCard: some View {
         if let demo = demoSteps {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.accent)
-                Text(demo.count.formatted()).font(.system(size: 34, weight: .bold, design: .rounded))
-                ProgressView(value: Double(demo.count), total: Double(demo.target)).tint(ClientClay.sage)
-                Text("Target demo: \(demo.target.formatted())").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            HStack(spacing: 18) {
+                ClientCircularProgress(value: Double(demo.count), total: Double(demo.target), title: "Passi di oggi", valueText: demo.count.formatted(), detail: "di \(demo.target.formatted())", tint: ClientClay.accent)
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.accent)
+                    Text("Il movimento quotidiano in un colpo d’occhio.")
+                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                }
             }
             .clayCard()
         } else {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.accent)
+            HStack(spacing: 18) {
                 switch healthKit.state {
                 case .ready(let sample):
-                    Text(sample.count.formatted()).font(.system(size: 34, weight: .bold, design: .rounded))
-                    Text("Dati letti da Apple Salute").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                    ClientCircularProgress(value: Double(sample.count), total: 10_000, title: "Passi di oggi", valueText: sample.count.formatted(), detail: "di 10.000", tint: ClientClay.accent)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.accent)
+                        Text("Dati letti da Apple Salute").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                    }
                 case .loading:
                     ProgressView("Lettura da Apple Salute…")
                 case .unavailable:
-                    Text("Apple Salute non è disponibile su questo dispositivo.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    stepsUnavailable("Apple Salute non è disponibile su questo dispositivo.", actionTitle: nil)
                 case .noData, .failed:
-                    Text("Passi non disponibili").font(.headline)
-                    Button("Riprova con Apple Salute") { Task { await healthKit.requestAccessAndRefresh() } }
-                        .buttonStyle(ClaySecondaryButtonStyle())
+                    stepsUnavailable("Passi non disponibili", actionTitle: "Riprova")
                 case .notRequested:
-                    Text("Collega Apple Salute solo quando vuoi vedere i passi giornalieri.")
-                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                    Button("Collega Apple Salute") { Task { await healthKit.requestAccessAndRefresh() } }
-                        .buttonStyle(ClaySecondaryButtonStyle())
+                    stepsUnavailable("Collega Apple Salute per vedere i passi giornalieri.", actionTitle: "Collega")
                 }
             }
             .clayCard()
@@ -243,19 +264,42 @@ struct ClientHomeView: View {
             .clayCard()
         }
 
-        if let task = todayAgendaTask {
-            Button { selectedTab = .space } label: {
+        if !homeAgendaTasks.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Image(systemName: "checklist").foregroundStyle(ClientClay.sage)
-                    VStack(alignment: .leading) {
-                        Text("Dalla tua Agenda").font(.caption).foregroundStyle(ClientClay.secondaryInk)
-                        Text(task.title).font(.headline).foregroundStyle(ClientClay.ink)
-                    }
-                    Spacer(); Image(systemName: "arrow.right")
+                    Label("La tua Agenda", systemImage: "checklist").font(.headline).foregroundStyle(ClientClay.sage)
+                    Spacer()
+                    Button("Apri") { selectedTab = .space }.font(.subheadline.weight(.semibold))
                 }
-                .clayCard()
+                ForEach(homeAgendaTasks) { task in
+                    Button { session.toggleAgendaTask(task.id) } label: {
+                        HStack(spacing: 11) {
+                            Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                                .font(.title3).foregroundStyle(task.isCompleted ? ClientClay.sage : ClientClay.secondaryInk)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.title).font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.ink).strikethrough(task.isCompleted)
+                                if let date = task.date { Text(date.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(ClientClay.secondaryInk) }
+                            }
+                            Spacer()
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(task.title), \(task.isCompleted ? "completata" : "da completare")")
+                }
             }
-            .buttonStyle(.plain)
+            .clayCard(padding: 15)
+        }
+    }
+
+    private func stepsUnavailable(_ message: String, actionTitle: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.accent)
+            Text(message).font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+            if let actionTitle {
+                Button(actionTitle) { Task { await healthKit.requestAccessAndRefresh() } }
+                    .font(.subheadline.weight(.semibold))
+            }
         }
     }
 

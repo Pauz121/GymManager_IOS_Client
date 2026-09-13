@@ -62,23 +62,40 @@ enum ClientDemoData {
         ]
         let workout = ClientWorkoutPlan(
             id: workoutID, title: "Ipertrofia A", startsOn: "2026-09-01", endsOn: "2026-10-31", currentWeek: 4,
-            sessions: [ClientWorkoutSession(id: sessionID, name: "Upper Body 2", weekday: ClientDateLogic.weekday(for: now), durationMinutes: 58, exercises: exercises)],
+            sessions: [
+                ClientWorkoutSession(id: sessionID, name: "Upper Body 2", weekday: ClientDateLogic.weekday(for: now), durationMinutes: 58, exercises: exercises),
+                ClientWorkoutSession(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000018")!, name: "Lower Body", weekday: 3, durationMinutes: 55, exercises: [
+                    ClientExercise(id: UUID(), name: "Squat", sets: "4", repetitions: "6", restSeconds: 150, loadKg: 95, notes: "Discesa controllata.", videoURL: nil),
+                    ClientExercise(id: UUID(), name: "Romanian deadlift", sets: "3", repetitions: "8", restSeconds: 120, loadKg: 80, notes: nil, videoURL: nil),
+                    ClientExercise(id: UUID(), name: "Leg curl", sets: "3", repetitions: "12", restSeconds: 75, loadKg: 42.5, notes: nil, videoURL: nil)
+                ]),
+                ClientWorkoutSession(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000019")!, name: "Full Body", weekday: 5, durationMinutes: 50, exercises: [
+                    ClientExercise(id: UUID(), name: "Goblet squat", sets: "3", repetitions: "12", restSeconds: 75, loadKg: 30, notes: nil, videoURL: nil),
+                    ClientExercise(id: UUID(), name: "Chest press", sets: "3", repetitions: "10", restSeconds: 90, loadKg: 50, notes: nil, videoURL: nil),
+                    ClientExercise(id: UUID(), name: "Pulley", sets: "3", repetitions: "10", restSeconds: 90, loadKg: 50, notes: nil, videoURL: nil)
+                ])
+            ],
             todaySessionID: sessionID, publishedAt: now.addingTimeInterval(-86_400)
         )
         let nutritionID = UUID(uuidString: "DE000000-0000-0000-0000-000000000020")!
         let mealNames = ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]
-        let foods = [
-            [ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000041")!, name: "Yogurt greco", quantity: 170, unit: "g"), ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000042")!, name: "Fiocchi d’avena", quantity: 40, unit: "g")],
-            [ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000043")!, name: "Frutta fresca", quantity: 1, unit: "pz")],
-            [ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000044")!, name: "Riso basmati", quantity: 90, unit: "g"), ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000045")!, name: "Pollo", quantity: 160, unit: "g")],
-            [ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000046")!, name: "Pane integrale", quantity: 60, unit: "g")],
-            [ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000047")!, name: "Salmone", quantity: 180, unit: "g"), ClientFood(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000048")!, name: "Verdure", quantity: 200, unit: "g")]
-        ]
-        let mealIDs = (51...55).map { UUID(uuidString: String(format: "DE000000-0000-0000-0000-%012d", $0))! }
-        let meals = zip(zip(mealIDs, mealNames), foods).map { ClientMeal(id: $0.0.0, name: $0.0.1, foods: $0.1) }
+        func meals() -> [ClientMeal] {
+            let foods = [
+                [ClientFood(id: UUID(), name: "Yogurt greco", quantity: 170, unit: "g", caloriesKcal: 110), ClientFood(id: UUID(), name: "Fiocchi d’avena", quantity: 40, unit: "g", caloriesKcal: 152)],
+                [ClientFood(id: UUID(), name: "Frutta fresca", quantity: 1, unit: "pz", caloriesKcal: 85)],
+                [ClientFood(id: UUID(), name: "Riso basmati", quantity: 90, unit: "g", caloriesKcal: 324), ClientFood(id: UUID(), name: "Pollo", quantity: 160, unit: "g", caloriesKcal: 264)],
+                [ClientFood(id: UUID(), name: "Pane integrale", quantity: 60, unit: "g", caloriesKcal: 150)],
+                [ClientFood(id: UUID(), name: "Salmone", quantity: 180, unit: "g", caloriesKcal: 374), ClientFood(id: UUID(), name: "Verdure", quantity: 200, unit: "g", caloriesKcal: 70)]
+            ]
+            return zip(mealNames, foods).map { ClientMeal(id: UUID(), name: $0.0, foods: $0.1) }
+        }
+        let dayNames = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+        let nutritionDays = (1...7).map { weekday in
+            ClientNutritionDay(id: UUID(), weekday: weekday, name: dayNames[weekday - 1], meals: meals())
+        }
         let nutrition = ClientNutritionPlan(
-            id: nutritionID, title: "Piano quotidiano",
-            days: [ClientNutritionDay(id: UUID(uuidString: "DE000000-0000-0000-0000-000000000050")!, weekday: ClientDateLogic.weekday(for: now), name: "Oggi", meals: meals)],
+            id: nutritionID, title: "Piano alimentare settimanale",
+            days: nutritionDays,
             publishedAt: now.addingTimeInterval(-172_800), detailNotice: nil
         )
         let appointment = ClientAppointment(id: UUID(), title: "Check mensile", startsAt: now.addingTimeInterval(172_800), endsAt: now.addingTimeInterval(176_400), location: "Studio GymManager")

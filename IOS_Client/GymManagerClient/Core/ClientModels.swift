@@ -57,12 +57,18 @@ struct ClientFood: Identifiable, Codable, Equatable, Sendable {
     let name: String
     let quantity: Double?
     let unit: String
+    let caloriesKcal: Double?
 }
 
 struct ClientMeal: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let name: String
     let foods: [ClientFood]
+
+    var caloriesKcal: Double? {
+        guard !foods.isEmpty, foods.allSatisfy({ $0.caloriesKcal != nil }) else { return nil }
+        return foods.compactMap(\.caloriesKcal).reduce(0, +)
+    }
 }
 
 struct ClientNutritionDay: Identifiable, Codable, Equatable, Sendable {
@@ -70,6 +76,11 @@ struct ClientNutritionDay: Identifiable, Codable, Equatable, Sendable {
     let weekday: Int
     let name: String
     let meals: [ClientMeal]
+
+    var caloriesKcal: Double? {
+        guard !meals.isEmpty, meals.allSatisfy({ $0.caloriesKcal != nil }) else { return nil }
+        return meals.compactMap(\.caloriesKcal).reduce(0, +)
+    }
 }
 
 struct ClientNutritionPlan: Identifiable, Codable, Equatable, Sendable {

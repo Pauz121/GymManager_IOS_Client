@@ -27,10 +27,14 @@ $entitlementsPath = Join-Path $sourceRoot 'GymManagerClient.entitlements'
 $assetCatalogPath = Join-Path $sourceRoot 'Resources\Assets.xcassets'
 $appIconContentsPath = Join-Path $assetCatalogPath 'AppIcon.appiconset\Contents.json'
 $appIconPath = Join-Path $assetCatalogPath 'AppIcon.appiconset\AppIcon-1024.png'
+$widgetRoot = Join-Path $clientRoot 'GymManagerRunWidget'
+$widgetInfoPath = Join-Path $widgetRoot 'Info.plist'
+$widgetSourcePath = Join-Path $widgetRoot 'GymManagerRunLiveActivity.swift'
+$sharedActivityPath = Join-Path $clientRoot 'Shared\ClientRunActivityAttributes.swift'
 $pbx = Get-Content -LiteralPath $projectFile -Raw
 $swift = Read-AllSwift
 
-foreach ($xmlPath in @($workspacePath, $schemePath, $infoPath, $privacyPath, $entitlementsPath)) {
+foreach ($xmlPath in @($workspacePath, $schemePath, $infoPath, $widgetInfoPath, $privacyPath, $entitlementsPath)) {
     try { [xml](Get-Content -LiteralPath $xmlPath -Raw) | Out-Null; Assert-Check $true "Valid XML: $(Split-Path -Leaf $xmlPath)" }
     catch { Assert-Check $false "Valid XML: $(Split-Path -Leaf $xmlPath)" }
 }
@@ -38,7 +42,7 @@ foreach ($xmlPath in @($workspacePath, $schemePath, $infoPath, $privacyPath, $en
 $workspace = Get-Content -LiteralPath $workspacePath -Raw
 Assert-Check ($workspace -match 'group:GymManagerClient\.xcodeproj' -and $workspace -notmatch 'GymManager\.xcodeproj') 'Client workspace contains only the Client project'
 Assert-Check ((Split-Path -Leaf $clientRoot) -eq 'IOS_Client') 'Client project root is IOS_Client'
-Assert-Check (([regex]::Matches($pbx, 'isa = PBXNativeTarget')).Count -eq 2) 'Client project has app and test targets'
+Assert-Check (([regex]::Matches($pbx, 'isa = PBXNativeTarget')).Count -eq 3) 'Client project has app, Live Activity widget and test targets'
 Assert-Check ($pbx -match 'version = 2\.55\.1' -and $pbx -match 'supabase-swift') 'Supabase Swift exact version matches Trainer'
 Assert-Check ((([regex]::Matches($pbx, '\{')).Count) -eq (([regex]::Matches($pbx, '\}')).Count)) 'Xcode project braces are balanced'
 
@@ -54,6 +58,8 @@ Assert-Check ($baseConfig -match 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon')
 $info = Get-Content -LiteralPath $infoPath -Raw
 Assert-Check ($info -match '\$\(SUPABASE_URL\)' -and $info -match '\$\(SUPABASE_PUBLISHABLE_KEY\)') 'Info.plist references client-safe Supabase build settings'
 Assert-Check ($info -match 'NSHealthShareUsageDescription' -and (Get-Content -LiteralPath $entitlementsPath -Raw) -match 'com\.apple\.developer\.healthkit') 'HealthKit disclosure and entitlement are both present'
+Assert-Check ($info -match 'NSSupportsLiveActivities' -and $info -match '(?s)UIBackgroundModes.*location') 'Running declares Live Activities and background location mode'
+Assert-Check ((Test-Path -LiteralPath $widgetSourcePath) -and (Test-Path -LiteralPath $sharedActivityPath) -and $pbx -match 'GymManagerRunWidget\.appex in Embed App Extensions') 'Running Live Activity extension and shared attributes are embedded'
 try {
     Get-Content -LiteralPath $appIconContentsPath -Raw | ConvertFrom-Json | Out-Null
     Add-Type -AssemblyName System.Drawing
@@ -96,6 +102,9 @@ $health = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\HealthKitStepSer
 $locationSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\RunningLocationService.swift') -Raw
 $locationInitializer = [regex]::Match($locationSource, '(?s)override init\(\)\s*\{(?<body>.*?)\n\s*\}').Groups['body'].Value
 $running = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Running\ClientRunningView.swift') -Raw
+$nutrition = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Nutrition\ClientNutritionView.swift') -Raw
+$account = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Space\ClientAccountView.swift') -Raw
+$tabsSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'App\ClientTabView.swift') -Raw
 Assert-Check ($homeSource -match 'Ciao, \\\(identity\.firstName\)' -and $homeSource -match 'Allenamento di oggi' -and $homeSource -match 'Nutrizione di oggi') 'Home is today-first and uses the authenticated Client name'
 Assert-Check ($workoutExecution -match 'Completa serie' -and $workoutExecution -match 'ClientRestTimerBar' -and $workoutExecution -match 'Termina allenamento') 'Workout execution includes set completion, rest timer and final check'
 Assert-Check ($workoutExecution -match 'Fatica percepita' -and $workoutExecution -match 'Qualità allenamento' -and $workoutExecution -match 'Dolori o fastidi') 'Post-workout flow is limited to rapid feedback fields'
@@ -110,6 +119,12 @@ Assert-Check ($running -match 'MapPolyline' -and $running -match 'location\.dist
 Assert-Check ($running -match 'onLongPressGesture' -and $running -match 'ClientRunningCompletionView' -and $running -match 'accessibilityReduceMotion') 'Running has protected finish, route replay and Reduce Motion support'
 Assert-Check ($swift -match 'route: \[ClientRoutePoint\]' -and $swift -match 'maximumSpeedKmh' -and $swift -match 'averageSpeedKmh') 'Completed runs persist route and final speed metrics'
 Assert-Check ($swift -match 'capabilities\.runningEnabled' -and $swift -match 'runningPlan != nil') 'Running UI is gated by Client capability and assigned plan'
+Assert-Check ($homeSource -match 'ClientCircularProgress' -and $homeSource.IndexOf('stepsCard') -lt $homeSource.IndexOf('journey')) 'Home places circular daily steps above the journey content'
+Assert-Check ($repository -match 'calories_kcal' -and $homeSource -match 'completedCalories' -and $homeSource -match '-- kcal') 'Nutrition calories use backend values and an honest unavailable fallback'
+Assert-Check ($nutrition -match 'ForEach\(plan\.days\)' -and $nutrition -match 'isCurrentDay' -and $nutrition -match 'Consultazione · sola lettura') 'Nutrition exposes every plan day and gates completion to today'
+Assert-Check ($account -match 'PhotosPicker' -and $tabsSource -match 'avatarStore\.image' -and $swift -match 'GymManagerClient/Avatars') 'Profile photo is local per account and appears in the Spazio tab'
+Assert-Check ($homeSource -match 'homeAgendaTasks' -and $homeSource -match 'toggleAgendaTask') 'Home shows and completes personal Agenda activities'
+Assert-Check ($locationSource -match 'allowsBackgroundLocationUpdates = true' -and $running -match 'ClientRunLiveActivityManager') 'Running continues location updates and publishes lock-screen metrics'
 
 $tests = Get-Content -LiteralPath (Join-Path $clientRoot 'GymManagerClientTests\ClientPhase1Tests.swift') -Raw
 Assert-Check (([regex]::Matches($tests, '(?m)^\s*func test')).Count -ge 30) 'At least 30 native unit tests are defined'

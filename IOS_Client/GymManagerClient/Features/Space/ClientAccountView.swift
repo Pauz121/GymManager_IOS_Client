@@ -1,12 +1,15 @@
+import PhotosUI
 import SwiftUI
 
 struct ClientAccountView: View {
     let identity: ClientIdentity
     let source: ClientDataSource
     @EnvironmentObject private var session: ClientSessionStore
+    @EnvironmentObject private var avatarStore: ClientAvatarStore
     @State private var trainerCode = ""
     @State private var password = ""
     @State private var confirmation = ""
+    @State private var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
         ScrollView {
@@ -14,9 +17,24 @@ struct ClientAccountView: View {
                 ClientPageTitle("Account", eyebrow: "Profilo e sicurezza", subtitle: "Le tue informazioni e lo stato del percorso.")
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text(initials).font(.title2.weight(.bold)).foregroundStyle(.white).frame(width: 58, height: 58).background(ClientClay.accent, in: Circle())
+                        ClientProfileAvatar(image: avatarStore.image(for: identity.authUserID), initials: initials)
                         VStack(alignment: .leading) { Text(identity.displayName).font(.title2.weight(.bold)); Text(identity.email ?? identity.username).font(.subheadline).foregroundStyle(ClientClay.secondaryInk) }
                     }
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label(avatarStore.image(for: identity.authUserID) == nil ? "Aggiungi foto profilo" : "Cambia foto profilo", systemImage: "photo.badge.plus")
+                    }
+                    .buttonStyle(ClaySecondaryButtonStyle())
+                    if avatarStore.image(for: identity.authUserID) != nil {
+                        Button(role: .destructive) {
+                            do { try avatarStore.remove(userID: identity.authUserID) }
+                            catch { session.notice = "Non è stato possibile rimuovere la foto profilo." }
+                        } label: {
+                            Label("Rimuovi foto", systemImage: "trash")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                    }
+                    Text("La foto resta protetta su questo iPhone e non viene caricata sul profilo online.")
+                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
                     ClientBadge(text: identity.mode == .trainerConnected ? "Cliente seguito" : "Account personale", tint: identity.mode == .trainerConnected ? ClientClay.sage : ClientClay.warning)
                 }.clayCard()
 
@@ -67,7 +85,23 @@ struct ClientAccountView: View {
                 Button(role: .destructive) { Task { await session.signOut() } } label: { Label("Esci dal mio account", systemImage: "rectangle.portrait.and.arrow.right") }
                     .buttonStyle(ClaySecondaryButtonStyle())
             }.padding(20)
-        }.clientPage().navigationTitle("Account").navigationBarTitleDisplayMode(.inline)
+        }
+        .clientPage().navigationTitle("Account").navigationBarTitleDisplayMode(.inline)
+        .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self) else {
+                        throw ClientAppError.message("La foto selezionata non contiene un’immagine leggibile.")
+                    }
+                    try avatarStore.save(data, userID: identity.authUserID)
+                } catch {
+                    session.notice = (error as? LocalizedError)?.errorDescription ?? "Non è stato possibile salvare la foto profilo."
+                }
+                selectedPhoto = nil
+            }
+        }
     }
 
     private var initials: String { "\(identity.firstName.first.map(String.init) ?? "")\(identity.lastName.first.map(String.init) ?? "")" }

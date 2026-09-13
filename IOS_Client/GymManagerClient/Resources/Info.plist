@@ -16,6 +16,9 @@
 	<string>GymManager utilizza i dati dei passi per mostrarti l'andamento della tua attività quotidiana.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GymManager usa la posizione durante una corsa per mostrare il percorso, la distanza e il ritmo.</string>
+	<key>UIBackgroundModes</key>
+	<array><string>location</string></array>
+	<key>NSSupportsLiveActivities</key><true/>
 	<key>UILaunchScreen</key><dict/>
 	<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
 </dict></plist>

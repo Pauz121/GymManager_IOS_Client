@@ -70,9 +70,14 @@ struct ClientWorkoutView: View {
                 ClientEmptyState(symbol: "moon.zzz", title: "Oggi riposo", message: "Puoi consultare le altre sessioni senza avviarne una per errore.")
             }
 
-            Text("Scheda attuale").font(.title3.weight(.bold))
+            Text("Scheda completa").font(.title3.weight(.bold))
             ForEach(plan.sessions) { workout in
-                sessionCard(plan: plan, workout: workout)
+                NavigationLink {
+                    ClientWorkoutSessionDetailView(plan: plan, workout: workout)
+                } label: {
+                    sessionCard(plan: plan, workout: workout)
+                }
+                .buttonStyle(.plain)
             }
         } else {
             ClientEmptyState(
@@ -109,32 +114,110 @@ struct ClientWorkoutView: View {
 
     private func sessionCard(plan: ClientWorkoutPlan, workout: ClientWorkoutSession) -> some View {
         let execution = session.workoutExecution(sessionID: workout.id)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                Image(systemName: execution?.isCompleted == true ? "checkmark.circle.fill" : workout.id == plan.todaySessionID ? "play.circle.fill" : "figure.strengthtraining.traditional")
-                    .font(.title2).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : workout.id == plan.todaySessionID ? ClientClay.accent : ClientClay.secondaryInk)
+        return HStack(spacing: 14) {
+            Image(systemName: execution?.isCompleted == true ? "checkmark.circle.fill" : workout.id == plan.todaySessionID ? "play.circle.fill" : "figure.strengthtraining.traditional")
+                .font(.title2).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : workout.id == plan.todaySessionID ? ClientClay.accent : ClientClay.secondaryInk)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(workout.name).font(.headline).foregroundStyle(ClientClay.ink)
+                Text("\(workout.exercises.count) esercizi\(workout.durationMinutes.map { " · \($0) min" } ?? "")")
+                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                if execution?.isCompleted == true {
+                    Text("Completato · consultabile").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.sage)
+                } else if workout.id == plan.todaySessionID {
+                    Text("Allenamento di oggi").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.accent)
+                }
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.secondaryInk)
+        }
+        .clayCard(padding: 15)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Apre gli esercizi di \(workout.name)")
+    }
+}
+
+private struct ClientWorkoutSessionDetailView: View {
+    let plan: ClientWorkoutPlan
+    let workout: ClientWorkoutSession
+    @EnvironmentObject private var session: ClientSessionStore
+    @State private var showingExecution = false
+
+    private var execution: ClientWorkoutExecution? {
+        session.workoutExecution(sessionID: workout.id)
+    }
+
+    private var isToday: Bool { plan.todaySessionID == workout.id }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(plan.title).font(.caption.weight(.bold)).foregroundStyle(ClientClay.accent)
+                    Text(workout.name).font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    Text("Settimana \(plan.currentWeek) · \(workout.exercises.count) esercizi")
+                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    if execution?.isCompleted == true {
+                        ClientBadge(text: "Allenamento completato · scheda consultabile", tint: ClientClay.sage, symbol: "checkmark.seal.fill")
+                    } else if !isToday {
+                        ClientBadge(text: "Consultazione · non programmato oggi", tint: ClientClay.secondaryInk, symbol: "eye.fill")
+                    }
+                }
+                .clayCard()
+
+                ForEach(Array(workout.exercises.enumerated()), id: \.element.id) { index, exercise in
+                    exerciseCard(exercise, number: index + 1)
+                }
+
+                if isToday, execution?.isCompleted != true {
+                    Button {
+                        session.beginWorkout(plan: plan, workoutSession: workout)
+                        showingExecution = true
+                    } label: {
+                        Label(execution == nil ? "Inizia allenamento" : "Riprendi allenamento", systemImage: "play.fill")
+                    }
+                    .buttonStyle(ClayPrimaryButtonStyle())
+                }
+            }
+            .padding(20)
+        }
+        .clientPage()
+        .navigationTitle(workout.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showingExecution) {
+            ClientWorkoutExecutionView(plan: plan, workoutSession: workout)
+        }
+    }
+
+    private func exerciseCard(_ exercise: ClientExercise, number: Int) -> some View {
+        let log = execution?.exercises.first { $0.exerciseID == exercise.id }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                Text("\(number)").font(.caption.weight(.bold)).foregroundStyle(.white)
+                    .frame(width: 28, height: 28).background(ClientClay.accent, in: Circle())
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(workout.name).font(.headline)
-                    Text("\(workout.exercises.count) esercizi").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    Text(exercise.name).font(.headline)
+                    Text([exercise.sets.map { "\($0) serie" }, exercise.repetitions.map { "\($0) reps" }].compactMap { $0 }.joined(separator: " · "))
+                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                 }
                 Spacer()
-            }
-            ForEach(workout.exercises) { exercise in
-                HStack(alignment: .top, spacing: 10) {
-                    Text(exercise.name).font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text([exercise.sets.map { "\($0) serie" }, exercise.repetitions.map { "\($0) reps" }].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                if log?.isCompleted == true {
+                    Image(systemName: "checkmark.circle.fill").font(.title2).foregroundStyle(ClientClay.sage)
+                        .accessibilityLabel("Esercizio completato")
                 }
             }
-            if workout.id == plan.todaySessionID, execution?.isCompleted != true {
-                Button {
-                    session.beginWorkout(plan: plan, workoutSession: workout)
-                    presentedWorkout = workout
-                } label: { Text(execution == nil ? "Inizia" : "Riprendi") }
-                    .buttonStyle(ClaySecondaryButtonStyle())
+            HStack(spacing: 12) {
+                if let load = exercise.loadKg { Label("\(load.formatted()) kg", systemImage: "scalemass") }
+                if let rest = exercise.restSeconds { Label("\(rest)s", systemImage: "timer") }
+            }
+            .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            if let note = exercise.notes, !note.isEmpty {
+                Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            }
+            if let log, !log.sets.isEmpty {
+                Text("\(log.sets.count) / \(exercise.setCount) serie registrate")
+                    .font(.caption.weight(.semibold)).foregroundStyle(log.isCompleted ? ClientClay.sage : ClientClay.accent)
             }
         }
-        .clayCard()
+        .clayCard(padding: 15)
     }
 }

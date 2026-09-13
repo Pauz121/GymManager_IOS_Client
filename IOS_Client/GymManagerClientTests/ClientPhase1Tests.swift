@@ -236,4 +236,25 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertFalse(standalone.capabilities.runningEnabled)
         XCTAssertNil(standalone.runningPlan)
     }
+
+    func testMealCaloriesSumOnlyCompleteSourceData() {
+        let meal = ClientMeal(id: UUID(), name: "Pranzo", foods: [
+            ClientFood(id: UUID(), name: "Riso", quantity: 100, unit: "g", caloriesKcal: 360),
+            ClientFood(id: UUID(), name: "Pollo", quantity: 150, unit: "g", caloriesKcal: 240)
+        ])
+        XCTAssertEqual(meal.caloriesKcal, 600)
+    }
+
+    func testMealCaloriesDoNotInventMissingValues() {
+        let meal = ClientMeal(id: UUID(), name: "Cena", foods: [
+            ClientFood(id: UUID(), name: "Alimento", quantity: nil, unit: "g", caloriesKcal: nil)
+        ])
+        XCTAssertNil(meal.caloriesKcal)
+    }
+
+    func testDemoNutritionExposesWholeWeekWithCalories() {
+        let days = ClientDemoData.snapshot(for: .trainerConnected).nutrition?.days ?? []
+        XCTAssertEqual(days.count, 7)
+        XCTAssertTrue(days.allSatisfy { $0.caloriesKcal != nil })
+    }
 }

@@ -29,7 +29,7 @@ struct ClientRunningView: View {
                     if let minutes = plan.targetMinutes { metric("Durata", value: "\(minutes) min", symbol: "timer") }
                     if let distance = plan.targetDistanceKm { metric("Distanza", value: "\(distance.formatted()) km", symbol: "location") }
                 }
-                Label("Durante la corsa tieni GymManager aperto: il tracciamento in background non è attivo.", systemImage: "iphone")
+                Label("Percorso e Live Activity restano visibili anche con schermo bloccato. iOS mostra l’indicatore di posizione durante la corsa.", systemImage: "lock.iphone")
                     .font(.caption).foregroundStyle(ClientClay.secondaryInk)
                 Button {
                     if activeRun == nil {
@@ -96,6 +96,7 @@ private struct ClientRunningExecutionView: View {
     let plan: ClientRunningPlan
     @EnvironmentObject private var session: ClientSessionStore
     @EnvironmentObject private var location: RunningLocationService
+    @EnvironmentObject private var liveActivity: ClientRunLiveActivityManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var camera: MapCameraPosition = .automatic
@@ -120,6 +121,10 @@ private struct ClientRunningExecutionView: View {
             if let run = activeRun {
                 if run.isPaused { location.pauseTracking() }
                 else { location.resumeRun(route: run.route, maximumSpeedMetersPerSecond: run.maximumSpeedMetersPerSecond) }
+                Task {
+                    await liveActivity.start(planTitle: plan.title, elapsedSeconds: run.elapsedSeconds())
+                    await updateLiveActivity(force: true)
+                }
             }
         }
         .onDisappear {
@@ -128,6 +133,7 @@ private struct ClientRunningExecutionView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 session.updateRunRoute(location.route, maximumSpeedMetersPerSecond: location.maximumSpeedMetersPerSecond)
+                Task { await updateLiveActivity(force: true) }
             }
         }
     }
@@ -157,6 +163,7 @@ private struct ClientRunningExecutionView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { controlDock }
         .onChange(of: location.route) { _, route in
             session.updateRunRoute(route, maximumSpeedMetersPerSecond: location.maximumSpeedMetersPerSecond, persist: route.count.isMultiple(of: 5))
+            Task { await updateLiveActivity() }
             if let coordinate = route.last?.coordinate {
                 withAnimation(.easeOut(duration: 0.35)) {
                     camera = .camera(MapCamera(centerCoordinate: coordinate, distance: 650, heading: 0, pitch: 25))
@@ -206,7 +213,10 @@ private struct ClientRunningExecutionView: View {
                 ForEach(RunningMetricMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            .onChange(of: metricMode) { _, _ in ClientHaptics.selection() }
+            .onChange(of: metricMode) { _, _ in
+                ClientHaptics.selection()
+                Task { await updateLiveActivity(force: true) }
+            }
 
             HStack(spacing: 10) {
                 Button {
@@ -217,6 +227,7 @@ private struct ClientRunningExecutionView: View {
                         session.toggleRunPause()
                         location.pauseTracking()
                     }
+                    Task { await updateLiveActivity(force: true) }
                 } label: {
                     Label(activeRun?.isPaused == true ? "Riprendi" : "Pausa", systemImage: activeRun?.isPaused == true ? "play.fill" : "pause.fill")
                 }
@@ -251,10 +262,26 @@ private struct ClientRunningExecutionView: View {
     }
 
     private func finishRun() {
+        let elapsed = activeRun?.elapsedSeconds() ?? 0
+        let distanceMeters = ClientRunningMetrics.distanceMeters(for: location.route)
         location.stopTracking()
         session.updateRunRoute(location.route, maximumSpeedMetersPerSecond: location.maximumSpeedMetersPerSecond)
         completedResult = session.finishRun(effort: nil, note: "")
+        Task {
+            await liveActivity.end(elapsedSeconds: elapsed, distanceMeters: distanceMeters, displayMode: metricMode == .speed ? "speed" : "pace")
+        }
         UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    private func updateLiveActivity(force: Bool = false) async {
+        guard let run = activeRun else { return }
+        await liveActivity.update(
+            elapsedSeconds: run.elapsedSeconds(),
+            distanceMeters: ClientRunningMetrics.distanceMeters(for: location.route),
+            isPaused: run.isPaused,
+            displayMode: metricMode == .speed ? "speed" : "pace",
+            force: force
+        )
     }
 }
 
