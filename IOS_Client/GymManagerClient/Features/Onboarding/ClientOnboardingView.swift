@@ -102,9 +102,21 @@ private struct ClientSignInView: View {
 private struct DemoEntryButton: View {
     @EnvironmentObject private var session: ClientSessionStore
     var body: some View {
-        Button { session.startDemo() } label: { Label("Esplora la demo", systemImage: "sparkles") }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Account demo").font(.headline)
+            Text("Dati sintetici, nessun accesso reale e nessuna password salvata.")
+                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            Button { session.startDemo(.trainerConnected) } label: {
+                Label("Demo · Cliente con Trainer", systemImage: "person.2.fill")
+            }
             .buttonStyle(ClaySecondaryButtonStyle())
-            .accessibilityHint("Apre dati fittizi e non crea una sessione reale")
+            Button { session.startDemo(.standalone) } label: {
+                Label("Demo · Cliente autonomo", systemImage: "figure.walk")
+            }
+            .buttonStyle(ClaySecondaryButtonStyle())
+        }
+        .clayCard()
+        .accessibilityHint("Apre dati fittizi e non crea una sessione reale")
     }
 }
 #endif

@@ -98,28 +98,142 @@ final class ClientPhase1Tests: XCTestCase {
     }
 
     func testDemoUsesFakeInvalidEmailDomain() {
-        XCTAssertEqual(ClientDemoData.snapshot.warnings, [])
-        XCTAssertTrue(ClientDemoData.identity.email?.hasSuffix(".invalid") == true)
+        let identity = ClientDemoData.identity(for: .trainerConnected)
+        let snapshot = ClientDemoData.snapshot(for: .trainerConnected)
+        XCTAssertEqual(snapshot.warnings, [])
+        XCTAssertTrue(identity.email?.hasSuffix(".invalid") == true)
     }
 
     func testDemoIsTrainerConnectedWithoutUsingProductionIDs() {
-        XCTAssertEqual(ClientDemoData.identity.mode, .trainerConnected)
-        XCTAssertTrue(ClientDemoData.identity.authUserID.uuidString.hasPrefix("DE000000"))
+        let identity = ClientDemoData.identity(for: .trainerConnected)
+        XCTAssertEqual(identity.mode, .trainerConnected)
+        XCTAssertTrue(identity.authUserID.uuidString.hasPrefix("DE000000"))
     }
 
     func testDemoHasCurrentWorkoutAndNutrition() {
-        XCTAssertNotNil(ClientDemoData.snapshot.workout)
-        XCTAssertNotNil(ClientDemoData.snapshot.nutrition)
+        let snapshot = ClientDemoData.snapshot(for: .trainerConnected)
+        XCTAssertNotNil(snapshot.workout)
+        XCTAssertNotNil(snapshot.nutrition)
     }
 
     func testUpdatesAreOneWayDomainEvents() {
-        let update = ClientDemoData.snapshot.updates.first
+        let update = ClientDemoData.snapshot(for: .trainerConnected).updates.first
         XCTAssertEqual(update?.kind, .workout)
         XCTAssertFalse(update?.title.lowercased().contains("chat") == true)
     }
 
-    func testHealthKitIsNotLinkedByTheDomainLayer() {
+    func testHealthKitRemainsOutsideSnapshotDomainLayer() {
         let modelNames = String(describing: ClientSnapshot.self)
         XCTAssertFalse(modelNames.contains("HKHealthStore"))
+    }
+
+    func testStandaloneDemoHasNoTrainerOrProfessionalPlans() {
+        let identity = ClientDemoData.identity(for: .standalone)
+        let snapshot = ClientDemoData.snapshot(for: .standalone)
+        XCTAssertEqual(identity.mode, .standalone)
+        XCTAssertNil(identity.clientID)
+        XCTAssertNil(identity.trainerID)
+        XCTAssertNil(identity.trainerName)
+        XCTAssertNil(snapshot.workout)
+        XCTAssertNil(snapshot.nutrition)
+    }
+
+    func testDemoPersonasUseDifferentStorageNamespaces() {
+        let connected = ClientDemoData.identity(for: .trainerConnected)
+        let standalone = ClientDemoData.identity(for: .standalone)
+        XCTAssertNotEqual(connected.authUserID, standalone.authUserID)
+        XCTAssertNotEqual(
+            ClientActivityStore.storageKey(userID: connected.authUserID, source: .demo),
+            ClientActivityStore.storageKey(userID: standalone.authUserID, source: .demo)
+        )
+    }
+
+    func testActivityStoreRoundTripAndSourceIsolation() throws {
+        let suiteName = "ClientPhase1Tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = ClientActivityStore(defaults: defaults)
+        let user = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
+        let meal = ClientMealCompletion(id: UUID(), mealID: UUID(), dayKey: "2026-09-13", completedAt: Date(timeIntervalSince1970: 1_757_721_600))
+        var state = ClientActivityState.empty
+        state.meals = [meal]
+
+        try store.save(state, userID: user, source: .demo)
+
+        XCTAssertEqual(store.load(userID: user, source: .demo), state)
+        XCTAssertEqual(store.load(userID: user, source: .live), .empty)
+    }
+
+    func testMealCompletionIsScopedToMealAndDay() {
+        let mealID = UUID()
+        let date = Date(timeIntervalSince1970: 1_757_721_600)
+        let completion = ClientMealCompletion(id: UUID(), mealID: mealID, dayKey: ClientDayKey.string(for: date), completedAt: date)
+        var state = ClientActivityState.empty
+        state.meals = [completion]
+
+        XCTAssertTrue(state.isMealCompleted(mealID, on: date))
+        XCTAssertFalse(state.isMealCompleted(mealID, on: date.addingTimeInterval(86_400)))
+        XCTAssertFalse(state.isMealCompleted(UUID(), on: date))
+    }
+
+    func testRestTimerUsesEndTimestamp() {
+        let now = Date(timeIntervalSince1970: 1_757_721_600)
+        let timer = ClientRestTimerState(exerciseID: UUID(), nextSetNumber: 2, phase: .running, endsAt: now.addingTimeInterval(120), pausedSeconds: nil)
+        XCTAssertEqual(timer.remainingSeconds(at: now), 120)
+        XCTAssertEqual(timer.remainingSeconds(at: now.addingTimeInterval(31)), 89)
+        XCTAssertEqual(timer.remainingSeconds(at: now.addingTimeInterval(121)), 0)
+    }
+
+    func testPausedRestTimerDoesNotDecrease() {
+        let timer = ClientRestTimerState(exerciseID: UUID(), nextSetNumber: 2, phase: .paused, endsAt: nil, pausedSeconds: 45)
+        XCTAssertEqual(timer.remainingSeconds(at: Date(timeIntervalSince1970: 0)), 45)
+        XCTAssertEqual(timer.remainingSeconds(at: Date(timeIntervalSince1970: 500)), 45)
+    }
+
+    func testExerciseParsesSetCountAndFirstRepTarget() {
+        let exercise = ClientExercise(id: UUID(), name: "Test", sets: "4", repetitions: "8-10", restSeconds: 90, loadKg: 50, notes: nil, videoURL: nil)
+        XCTAssertEqual(exercise.setCount, 4)
+        XCTAssertEqual(exercise.suggestedActualRepetitions, 8)
+    }
+
+    func testInvalidSetCountFallsBackToOne() {
+        let exercise = ClientExercise(id: UUID(), name: "Test", sets: "non definito", repetitions: nil, restSeconds: nil, loadKg: nil, notes: nil, videoURL: nil)
+        XCTAssertEqual(exercise.setCount, 1)
+    }
+
+    func testWorkoutCompletionKeepsCompletedExerciseVisibleInModel() {
+        let completedSet = ClientSetLog(id: UUID(), number: 1, prescribedRepetitions: "8", prescribedLoadKg: 40, actualRepetitions: 8, actualLoadKg: 42.5, completedAt: Date())
+        let exercise = ClientExerciseLog(id: UUID(), exerciseID: UUID(), note: "Buona esecuzione", sets: [completedSet])
+        XCTAssertTrue(exercise.isCompleted)
+        XCTAssertEqual(exercise.sets.count, 1)
+        XCTAssertEqual(exercise.sets.first?.actualLoadKg, 42.5)
+    }
+
+    func testRunningPaceRequiresRealDistance() {
+        let withoutDistance = ClientRunningResult(id: UUID(), planID: UUID(), completedAt: Date(), durationSeconds: 1_800, distanceKm: nil, route: [], maximumSpeedKmh: nil, effort: 3, note: "")
+        let withDistance = ClientRunningResult(id: UUID(), planID: UUID(), completedAt: Date(), durationSeconds: 1_800, distanceKm: 5, route: [], maximumSpeedKmh: 12, effort: 3, note: "")
+        XCTAssertNil(withoutDistance.averagePaceMinutesPerKm)
+        XCTAssertEqual(withDistance.averagePaceMinutesPerKm, 6)
+        XCTAssertEqual(withDistance.averageSpeedKmh, 10)
+        XCTAssertEqual(withDistance.maximumSpeedKmh, 12)
+    }
+
+    func testRunningDistanceUsesRecordedRouteOnly() {
+        let start = Date(timeIntervalSince1970: 1_757_721_600)
+        let route = [
+            ClientRoutePoint(latitude: 45, longitude: 9, timestamp: start, horizontalAccuracy: 5, speedMetersPerSecond: 3),
+            ClientRoutePoint(latitude: 45.001, longitude: 9, timestamp: start.addingTimeInterval(30), horizontalAccuracy: 5, speedMetersPerSecond: 3)
+        ]
+        XCTAssertEqual(ClientRunningMetrics.distanceMeters(for: route), 111.2, accuracy: 1)
+        XCTAssertEqual(ClientRunningMetrics.distanceMeters(for: []), 0)
+    }
+
+    func testRunningIsCapabilityGatedInDemoData() {
+        let connected = ClientDemoData.snapshot(for: .trainerConnected)
+        let standalone = ClientDemoData.snapshot(for: .standalone)
+        XCTAssertTrue(connected.capabilities.runningEnabled)
+        XCTAssertNotNil(connected.runningPlan)
+        XCTAssertFalse(standalone.capabilities.runningEnabled)
+        XCTAssertNil(standalone.runningPlan)
     }
 }

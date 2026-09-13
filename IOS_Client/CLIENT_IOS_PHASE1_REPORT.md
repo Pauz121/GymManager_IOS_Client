@@ -1,5 +1,7 @@
 # GymManager Client iOS — Phase 1 report
 
+> Historical architecture baseline. The current executable-workout, HealthKit and GPS Running status is documented in `CLIENT_IOS_PHASE1_UX_REPORT.md`.
+
 ## Outcome
 
 A separate native iPhone Client application now exists at `IOS_Client/`. It is written in Swift 6 and SwiftUI, uses `NavigationStack`, `TabView`, async/await and the same exact Supabase Swift dependency (2.55.1) as the Trainer app. The existing Trainer project and sources were not modified.

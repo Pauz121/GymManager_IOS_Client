@@ -10,13 +10,13 @@ struct ClientTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack { ClientHomeView(identity: identity, snapshot: snapshot, selectedTab: $selectedTab) }
+            NavigationStack { ClientHomeView(identity: identity, snapshot: snapshot, source: source, selectedTab: $selectedTab) }
                 .tabItem { Label("Oggi", systemImage: "sun.max.fill") }.tag(ClientTab.today)
-            NavigationStack { ClientWorkoutView(plan: snapshot.workout, identity: identity) }
+            NavigationStack { ClientWorkoutView(snapshot: snapshot, identity: identity) }
                 .tabItem { Label("Scheda", systemImage: "dumbbell.fill") }.tag(ClientTab.workout)
             NavigationStack { ClientNutritionView(plan: snapshot.nutrition, identity: identity) }
                 .tabItem { Label("Nutrizione", systemImage: "leaf.fill") }.tag(ClientTab.nutrition)
-            NavigationStack { ClientProgressView(entries: snapshot.progress) }
+            NavigationStack { ClientProgressView(entries: snapshot.progress, identity: identity, source: source) }
                 .tabItem { Label("Progressi", systemImage: "chart.xyaxis.line") }.tag(ClientTab.progress)
             NavigationStack { PersonalSpaceView(identity: identity, snapshot: snapshot, source: source) }
                 .tabItem { Label("Spazio", systemImage: "person.crop.circle.fill") }.tag(ClientTab.space)
