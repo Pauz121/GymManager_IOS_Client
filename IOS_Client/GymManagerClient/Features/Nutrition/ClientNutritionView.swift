@@ -102,7 +102,7 @@ private struct ClientNutritionDayDetailView: View {
                     ClientCaloriePie(
                         value: day.caloriesKcal == nil ? 0 : completedCalories,
                         total: day.caloriesKcal ?? 1,
-                        valueText: day.caloriesKcal.map { "\(Int(completedCalories.rounded()))" } ?? "--",
+                        valueText: day.caloriesKcal.map { _ in "\(Int(completedCalories.rounded()))" } ?? "--",
                         detail: day.caloriesKcal.map { "di \(Int($0.rounded())) kcal" } ?? "kcal non disponibili"
                     )
                     VStack(alignment: .leading, spacing: 7) {
