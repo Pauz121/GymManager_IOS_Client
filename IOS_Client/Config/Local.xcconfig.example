@@ -1,0 +1,7 @@
+// Copy this file to Local.xcconfig for live backend access.
+// Local.xcconfig is ignored by Git.
+SUPABASE_URL = https:/$()/PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_REPLACE_ME
+PRIVACY_POLICY_URL =
+SUPPORT_URL =
+TERMS_URL =

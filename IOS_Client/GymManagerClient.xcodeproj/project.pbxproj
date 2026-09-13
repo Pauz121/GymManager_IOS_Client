@@ -1,0 +1,91 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B10000000000000000000001 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000030 /* Supabase */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B10000000000000000000002 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = B10000000000000000000010 /* Project object */; proxyType = 1; remoteGlobalIDString = B10000000000000000000020; remoteInfo = GymManagerClient; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B10000000000000000000003 /* GymManagerClient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GymManagerClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000004 /* GymManagerClientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GymManagerClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000005 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		B10000000000000000000006 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		B10000000000000000000007 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B10000000000000000000031 /* Client exceptions */ = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Resources/Info.plist,); target = B10000000000000000000020 /* GymManagerClient */; };
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B10000000000000000000008 /* GymManagerClient */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (B10000000000000000000031 /* Client exceptions */,); path = GymManagerClient; sourceTree = "<group>"; };
+		B10000000000000000000009 /* GymManagerClientTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = GymManagerClientTests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B10000000000000000000011 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (B10000000000000000000001 /* Supabase in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000012 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B10000000000000000000013 = {isa = PBXGroup; children = (B10000000000000000000008 /* GymManagerClient */, B10000000000000000000009 /* GymManagerClientTests */, B10000000000000000000014 /* Config */, B10000000000000000000015 /* Products */,); sourceTree = "<group>"; };
+		B10000000000000000000014 /* Config */ = {isa = PBXGroup; children = (B10000000000000000000005, B10000000000000000000006, B10000000000000000000007,); path = Config; sourceTree = "<group>"; };
+		B10000000000000000000015 /* Products */ = {isa = PBXGroup; children = (B10000000000000000000003, B10000000000000000000004,); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B10000000000000000000020 /* GymManagerClient */ = {isa = PBXNativeTarget; buildConfigurationList = B10000000000000000000040; buildPhases = (B10000000000000000000021, B10000000000000000000011, B10000000000000000000022,); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (B10000000000000000000008,); name = GymManagerClient; packageProductDependencies = (B10000000000000000000030,); productName = GymManagerClient; productReference = B10000000000000000000003; productType = "com.apple.product-type.application"; };
+		B10000000000000000000023 /* GymManagerClientTests */ = {isa = PBXNativeTarget; buildConfigurationList = B10000000000000000000041; buildPhases = (B10000000000000000000024, B10000000000000000000012, B10000000000000000000025,); buildRules = (); dependencies = (B10000000000000000000026,); fileSystemSynchronizedGroups = (B10000000000000000000009,); name = GymManagerClientTests; productName = GymManagerClientTests; productReference = B10000000000000000000004; productType = "com.apple.product-type.bundle.unit-test"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B10000000000000000000010 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1640; LastUpgradeCheck = 1640; TargetAttributes = {B10000000000000000000020 = {CreatedOnToolsVersion = 16.4; }; B10000000000000000000023 = {CreatedOnToolsVersion = 16.4; TestTargetID = B10000000000000000000020; }; }; }; buildConfigurationList = B10000000000000000000042; compatibilityVersion = "Xcode 16.0"; developmentRegion = it; hasScannedForEncodings = 0; knownRegions = (it, en, Base,); mainGroup = B10000000000000000000013; minimizedProjectReferenceProxies = 1; packageReferences = (B10000000000000000000029,); preferredProjectObjectVersion = 77; productRefGroup = B10000000000000000000015; projectDirPath = ""; projectRoot = ""; targets = (B10000000000000000000020, B10000000000000000000023,); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B10000000000000000000022 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000025 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B10000000000000000000021 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000024 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B10000000000000000000026 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = B10000000000000000000020; targetProxy = B10000000000000000000002; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B10000000000000000000050 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = B10000000000000000000006; buildSettings = {DEVELOPMENT_TEAM = ""; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
+		B10000000000000000000051 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = B10000000000000000000007; buildSettings = {DEVELOPMENT_TEAM = ""; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = 1; VALIDATE_PRODUCT = YES; }; name = Release; };
+		B10000000000000000000052 /* Debug tests */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.gymmanager.client.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GymManagerClient.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GymManagerClient"; }; name = Debug; };
+		B10000000000000000000053 /* Release tests */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.gymmanager.client.ios.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GymManagerClient.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GymManagerClient"; }; name = Release; };
+		B10000000000000000000054 /* Project Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LOCALIZATION_PREFERS_STRING_CATALOGS = YES; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; }; name = Debug; };
+		B10000000000000000000055 /* Project Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LOCALIZATION_PREFERS_STRING_CATALOGS = YES; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 6.0; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B10000000000000000000040 = {isa = XCConfigurationList; buildConfigurations = (B10000000000000000000050, B10000000000000000000051,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B10000000000000000000041 = {isa = XCConfigurationList; buildConfigurations = (B10000000000000000000052, B10000000000000000000053,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B10000000000000000000042 = {isa = XCConfigurationList; buildConfigurations = (B10000000000000000000054, B10000000000000000000055,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B10000000000000000000029 /* supabase-swift */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/supabase/supabase-swift.git"; requirement = {kind = exactVersion; version = 2.55.1; }; };
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B10000000000000000000030 /* Supabase */ = {isa = XCSwiftPackageProductDependency; package = B10000000000000000000029; productName = Supabase; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B10000000000000000000010 /* Project object */;
+}
