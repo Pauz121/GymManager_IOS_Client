@@ -2,6 +2,18 @@
 
 Date: 2026-09-13
 
+## Premium UX and HealthKit alignment — 2026-09-14
+
+- Daily steps now use one `HKStatisticsQuery` with `.cumulativeSum` over the current local calendar day. HealthKit performs its normal multi-source merge, so the app does not manually add overlapping iPhone, Apple Watch or third-party samples. The value refreshes on Home appearance, foreground activation, pull-to-refresh and every 60 seconds while Home remains visible. The last refresh time is shown.
+- The old Home “Il tuo percorso” summary is replaced by “Il tuo oggi”: a brand-forward status card that reports only real workout, meal and personal Agenda state.
+- The Home Nutrition card has stronger hierarchy, calorie visualization, meal progress, animated one-tap completion, per-meal calories and clear completed/pending states.
+- The shared visual system now has warmer layered backgrounds, deeper clay surfaces, high-contrast brand hero cards, richer metric tiles and restrained pressed-state micro-interactions.
+- Every exercise listed inside a workout session is tappable. Its detail sheet shows the supported prescription fields, operational notes, Trainer video when a URL exists, and recent local execution history with completed sets, actual load and personal notes. RIR/RPE and photos are intentionally not displayed because the current Client model does not expose those fields.
+- Progressi is rebuilt around real data: overview, four KPI tiles, seven-day completed-workout chart, weight area/line trend, waist/hip trends, current-day HealthKit steps and saved running summaries.
+- Static validation: PASS, 66/66 checks. Two additional XCTest definitions verify the local-day HealthKit window and timezone behavior. Xcode compilation and device validation remain pending on macOS.
+- Antigravity delegation `GYM-CLIENT-IOS-PREMIUM-UX-20260913-001` was attempted but did not run: authentication timed out before any model turn (0 tokens, no conversation ID, no file change). Codex completed and reviewed the work; no Gemini result is claimed.
+- Database, migration, Supabase, Desktop and Trainer iOS changes: NONE.
+
 ## Phase 2 UX update — Home, plans and background Running
 
 The requested Client-only UX update is implemented in the local `IOS_Client/` source:

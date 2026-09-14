@@ -8,6 +8,8 @@ struct ClientCircularProgress: View {
     let detail: String
     var tint = ClientClay.accent
     var size: CGFloat = 116
+    var textColor = ClientClay.ink
+    var detailColor = ClientClay.secondaryInk
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -28,11 +30,12 @@ struct ClientCircularProgress: View {
             VStack(spacing: 1) {
                 Text(valueText)
                     .font(.system(.title3, design: .rounded, weight: .bold).monospacedDigit())
+                    .foregroundStyle(textColor)
                     .minimumScaleFactor(0.65)
                     .lineLimit(1)
                 Text(detail)
                     .font(.caption2)
-                    .foregroundStyle(ClientClay.secondaryInk)
+                    .foregroundStyle(detailColor)
                     .lineLimit(1)
             }
             .padding(14)

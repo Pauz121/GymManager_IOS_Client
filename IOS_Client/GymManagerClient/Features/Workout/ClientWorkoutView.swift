@@ -141,6 +141,7 @@ private struct ClientWorkoutSessionDetailView: View {
     let workout: ClientWorkoutSession
     @EnvironmentObject private var session: ClientSessionStore
     @State private var showingExecution = false
+    @State private var selectedExercise: ClientExercise?
 
     private var execution: ClientWorkoutExecution? {
         session.workoutExecution(sessionID: workout.id)
@@ -165,7 +166,11 @@ private struct ClientWorkoutSessionDetailView: View {
                 .clayCard()
 
                 ForEach(Array(workout.exercises.enumerated()), id: \.element.id) { index, exercise in
-                    exerciseCard(exercise, number: index + 1)
+                    Button { selectedExercise = exercise } label: {
+                        exerciseCard(exercise, number: index + 1)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Apre tutti i dettagli di \(exercise.name)")
                 }
 
                 if isToday, execution?.isCompleted != true {
@@ -186,6 +191,11 @@ private struct ClientWorkoutSessionDetailView: View {
         .fullScreenCover(isPresented: $showingExecution) {
             ClientWorkoutExecutionView(plan: plan, workoutSession: workout)
         }
+        .sheet(item: $selectedExercise) { exercise in
+            ClientExerciseDetailSheet(plan: plan, workout: workout, exercise: exercise)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private func exerciseCard(_ exercise: ClientExercise, number: Int) -> some View {
@@ -203,6 +213,9 @@ private struct ClientWorkoutSessionDetailView: View {
                 if log?.isCompleted == true {
                     Image(systemName: "checkmark.circle.fill").font(.title2).foregroundStyle(ClientClay.sage)
                         .accessibilityLabel("Esercizio completato")
+                } else {
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.title2).foregroundStyle(ClientClay.accent.opacity(0.72))
                 }
             }
             HStack(spacing: 12) {
@@ -216,6 +229,145 @@ private struct ClientWorkoutSessionDetailView: View {
             if let log, !log.sets.isEmpty {
                 Text("\(log.sets.count) / \(exercise.setCount) serie registrate")
                     .font(.caption.weight(.semibold)).foregroundStyle(log.isCompleted ? ClientClay.sage : ClientClay.accent)
+            }
+        }
+        .clayCard(padding: 15)
+    }
+}
+
+private struct ClientExerciseDetailSheet: View {
+    let plan: ClientWorkoutPlan
+    let workout: ClientWorkoutSession
+    let exercise: ClientExercise
+
+    @EnvironmentObject private var session: ClientSessionStore
+    @Environment(\.dismiss) private var dismiss
+
+    private struct HistoryItem: Identifiable {
+        let id: UUID
+        let date: Date
+        let completedSets: Int
+        let totalSets: Int
+        let load: Double?
+        let note: String
+    }
+
+    private var history: [HistoryItem] {
+        session.activity.workouts.compactMap { execution in
+            guard let log = execution.exercises.first(where: { $0.exerciseID == exercise.id }) else { return nil }
+            let completedSets = log.sets.filter(\.isCompleted)
+            return HistoryItem(
+                id: log.id,
+                date: execution.completedAt ?? execution.startedAt,
+                completedSets: completedSets.count,
+                totalSets: log.sets.count,
+                load: completedSets.compactMap(\.actualLoadKg).last,
+                note: log.note
+            )
+        }
+        .sorted { $0.date > $1.date }
+    }
+
+    private var detailColumns: [GridItem] {
+        [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text(workout.name.uppercased())
+                            .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(ClientClay.accentSoft)
+                        Text(exercise.name)
+                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("\(plan.title) · Settimana \(plan.currentWeek)")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.7))
+                    }
+                    .premiumCard()
+
+                    ClientSectionHeader(title: "Prescrizione", symbol: "list.bullet.clipboard.fill")
+                    LazyVGrid(columns: detailColumns, spacing: 10) {
+                        prescriptionTile(title: "Serie", value: exercise.sets ?? "—", symbol: "square.stack.3d.up.fill")
+                        prescriptionTile(title: "Ripetizioni", value: exercise.repetitions ?? "—", symbol: "repeat")
+                        prescriptionTile(title: "Recupero", value: exercise.restSeconds.map { "\($0) sec" } ?? "—", symbol: "timer")
+                        prescriptionTile(title: "Carico", value: exercise.loadKg.map { "\($0.formatted()) kg" } ?? "—", symbol: "scalemass.fill")
+                    }
+
+                    if let notes = exercise.notes, !notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 9) {
+                            Label("Note operative", systemImage: "text.bubble.fill")
+                                .font(.headline).foregroundStyle(ClientClay.accent)
+                            Text(notes).font(.body).foregroundStyle(ClientClay.ink)
+                        }
+                        .clayCard()
+                    }
+
+                    if let videoURL = exercise.videoURL {
+                        Link(destination: videoURL) {
+                            HStack(spacing: 13) {
+                                Image(systemName: "play.rectangle.fill").font(.title2).foregroundStyle(ClientClay.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Video dell’esercizio").font(.headline).foregroundStyle(ClientClay.ink)
+                                    Text("Apri la dimostrazione fornita dal Trainer")
+                                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right").foregroundStyle(ClientClay.accent)
+                            }
+                            .clayCard()
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    ClientSectionHeader(title: "Storico personale", detail: history.isEmpty ? "Nessun dato" : "Ultimi \(min(3, history.count))", symbol: "clock.arrow.circlepath")
+                    if history.isEmpty {
+                        ClientEmptyState(symbol: "clock", title: "Ancora nessuna esecuzione", message: "Serie, carichi effettivi e note compariranno qui dopo il primo allenamento registrato.")
+                    } else {
+                        ForEach(history.prefix(3)) { item in
+                            historyRow(item)
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .clientPage()
+            .navigationTitle("Dettaglio esercizio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Fine") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private func prescriptionTile(title: String, value: String, symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: symbol).foregroundStyle(ClientClay.accent)
+            Text(value).font(.system(.title3, design: .rounded, weight: .bold)).foregroundStyle(ClientClay.ink)
+            Text(title).font(.caption).foregroundStyle(ClientClay.secondaryInk)
+        }
+        .clayCard(padding: 14)
+    }
+
+    private func historyRow(_ item: HistoryItem) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label(item.date.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(item.completedSets)/\(item.totalSets) serie")
+                    .font(.caption.weight(.bold)).foregroundStyle(item.completedSets == item.totalSets ? ClientClay.sage : ClientClay.warning)
+            }
+            if let load = item.load {
+                Label("Ultimo carico: \(load.formatted()) kg", systemImage: "scalemass")
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            }
+            if !item.note.isEmpty {
+                Label(item.note, systemImage: "note.text")
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
             }
         }
         .clayCard(padding: 15)

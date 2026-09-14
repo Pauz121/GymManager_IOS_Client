@@ -7,6 +7,14 @@ struct ClientStepSample: Equatable, Sendable {
     let count: Int
 }
 
+enum ClientHealthDayWindow {
+    static func interval(containing date: Date, calendar: Calendar = .autoupdatingCurrent) -> DateInterval {
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? date
+        return DateInterval(start: start, end: end)
+    }
+}
+
 @MainActor
 final class HealthKitStepService: ObservableObject {
     enum State: Equatable {
@@ -20,9 +28,19 @@ final class HealthKitStepService: ObservableObject {
 
     @Published private(set) var state: State
     private let healthStore = HKHealthStore()
+    private let defaults: UserDefaults
+    private static let authorizationRequestedKey = "gymmanager.client.healthkit.steps.authorization-requested"
+    private var isRefreshing = false
 
-    init() {
-        state = HKHealthStore.isHealthDataAvailable() ? .notRequested : .unavailable
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if !HKHealthStore.isHealthDataAvailable() {
+            state = .unavailable
+        } else if defaults.bool(forKey: Self.authorizationRequestedKey) {
+            state = .loading
+        } else {
+            state = .notRequested
+        }
     }
 
     func requestAccessAndRefresh() async {
@@ -35,8 +53,19 @@ final class HealthKitStepService: ObservableObject {
         state = .loading
         do {
             try await healthStore.requestAuthorization(toShare: [], read: [stepType])
+            defaults.set(true, forKey: Self.authorizationRequestedKey)
             try await refresh()
         } catch {
+            state = .failed
+        }
+    }
+
+    func refreshIfPreviouslyRequested() async {
+        guard defaults.bool(forKey: Self.authorizationRequestedKey) else { return }
+        do {
+            try await refresh()
+        } catch {
+            if case .ready = state { return }
             state = .failed
         }
     }
@@ -46,19 +75,32 @@ final class HealthKitStepService: ObservableObject {
             state = .unavailable
             return
         }
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: Date())
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
 
-        let count: Int = try await withCheckedThrowingContinuation { continuation in
+        let now = Date()
+        let day = ClientHealthDayWindow.interval(containing: now)
+        let predicate = HKQuery.predicateForSamples(
+            withStart: day.start,
+            end: min(now, day.end),
+            options: .strictStartDate
+        )
+
+        let result: (count: Int, hasAccessibleData: Bool) = try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
                 if let error { continuation.resume(throwing: error); return }
-                let value = result?.sumQuantity()?.doubleValue(for: .count()) ?? 0
-                continuation.resume(returning: max(0, Int(value.rounded())))
+                let quantity = result?.sumQuantity()
+                let value = quantity?.doubleValue(for: .count()) ?? 0
+                continuation.resume(returning: (max(0, Int(value.rounded())), quantity != nil))
             }
             healthStore.execute(query)
         }
 
-        state = count > 0 ? .ready(ClientStepSample(date: Date(), count: count)) : .noData
+        // HKStatisticsQuery delegates source reconciliation to HealthKit. We never add
+        // iPhone, Watch or third-party samples ourselves, avoiding duplicated totals.
+        state = result.hasAccessibleData
+            ? .ready(ClientStepSample(date: now, count: result.count))
+            : .noData
     }
 }

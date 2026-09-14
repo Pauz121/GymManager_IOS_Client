@@ -127,6 +127,30 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertFalse(modelNames.contains("HKHealthStore"))
     }
 
+    func testHealthDayWindowUsesTheRequestedCalendarDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = Date(timeIntervalSince1970: 1_757_750_400) // 2025-09-13 08:00 UTC
+        let interval = ClientHealthDayWindow.interval(containing: date, calendar: calendar)
+
+        XCTAssertEqual(interval.start, calendar.startOfDay(for: date))
+        XCTAssertEqual(interval.end, calendar.date(byAdding: .day, value: 1, to: interval.start))
+        XCTAssertTrue(interval.contains(date))
+    }
+
+    func testHealthDayWindowRespectsCalendarTimeZone() {
+        let date = Date(timeIntervalSince1970: 1_757_750_400)
+        var rome = Calendar(identifier: .gregorian)
+        rome.timeZone = TimeZone(identifier: "Europe/Rome")!
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        XCTAssertNotEqual(
+            ClientHealthDayWindow.interval(containing: date, calendar: rome).start,
+            ClientHealthDayWindow.interval(containing: date, calendar: utc).start
+        )
+    }
+
     func testStandaloneDemoHasNoTrainerOrProfessionalPlans() {
         let identity = ClientDemoData.identity(for: .standalone)
         let snapshot = ClientDemoData.snapshot(for: .standalone)
