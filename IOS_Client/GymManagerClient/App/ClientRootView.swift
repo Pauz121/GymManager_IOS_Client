@@ -17,8 +17,17 @@ struct ClientRootView: View {
                 }
             case .onboarding:
                 ClientOnboardingView()
+            case .emailConfirmation(let email):
+                ClientEmailConfirmationView(email: email)
             case .active(let identity, let snapshot, let source):
                 ClientTabView(identity: identity, snapshot: snapshot, source: source)
+                    .fullScreenCover(isPresented: Binding(
+                        get: { session.shouldOfferTrainerCode },
+                        set: { _ in }
+                    )) {
+                        ClientTrainerInvitationView()
+                            .interactiveDismissDisabled()
+                    }
             case .failure(let message):
                 ZStack {
                     ClientClay.canvas.ignoresSafeArea()

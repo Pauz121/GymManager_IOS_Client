@@ -95,10 +95,10 @@ struct ClientWorkoutView: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(category == item ? Color.white : ClientClay.ink)
-            .padding(13)
-            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-            .background(category == item ? ClientClay.brandGradient : LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(category == item ? ClientClay.accentSoft.opacity(0.52) : ClientClay.border) }
+            .padding(.horizontal, 11).padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .background(category == item ? ClientClay.brandGradient : LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(category == item ? ClientClay.accentSoft.opacity(0.52) : ClientClay.border) }
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(category == item ? [.isSelected] : [])
@@ -121,7 +121,7 @@ struct ClientWorkoutView: View {
                     Spacer()
                     Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.7))
                 }
-                .premiumCard(tint: ClientClay.accent)
+                .premiumCard(tint: ClientClay.accent, padding: 14)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Apre il piano attivo completo in sola lettura")
@@ -171,14 +171,14 @@ struct ClientWorkoutView: View {
         return NavigationLink {
             ClientWorkoutSessionDetailView(plan: plan, workout: workout)
         } label: {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Label("Allenamento di oggi", systemImage: execution?.isCompleted == true ? "checkmark.circle.fill" : "play.circle.fill")
                         .font(.headline).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : ClientClay.accentSoft)
                     Spacer()
                     Image(systemName: "chevron.right").foregroundStyle(.white.opacity(0.7))
                 }
-                Text(workout.name).font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                Text(workout.name).font(.system(.title3, design: .rounded, weight: .heavy)).foregroundStyle(.white)
                 Text("\(workout.exercises.count) esercizi\(workout.durationMinutes.map { " · \($0) min" } ?? "")")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.68))
                 Label(
@@ -187,7 +187,7 @@ struct ClientWorkoutView: View {
                 )
                 .font(.headline).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : ClientClay.accentSoft)
             }
-            .premiumCard(tint: execution?.isCompleted == true ? ClientClay.sage : ClientClay.accent)
+            .premiumCard(tint: execution?.isCompleted == true ? ClientClay.sage : ClientClay.accent, padding: 15)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Apre l’allenamento di oggi")

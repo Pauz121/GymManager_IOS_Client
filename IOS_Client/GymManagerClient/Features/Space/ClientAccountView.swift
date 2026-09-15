@@ -44,10 +44,18 @@ struct ClientAccountView: View {
                         Text(identity.trainerName ?? "Trainer collegato").font(.headline)
                         Label("Il collegamento è protetto e non può essere rimosso dall’app.", systemImage: "lock.shield").font(.footnote).foregroundStyle(ClientClay.secondaryInk)
                     } else {
-                        Text("Hai ricevuto un codice? Il servizio di attivazione sicura arriverà nella Fase 2.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                        TextField("Codice Trainer", text: $trainerCode).clientInputField().textInputAutocapitalization(.characters)
-                        Button("Collega il mio Trainer") {}.buttonStyle(ClaySecondaryButtonStyle()).disabled(true)
-                        Text("Nessun codice viene inviato o consumato.").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        Text("Nessun Trainer collegato")
+                            .font(.headline)
+                        Text("Puoi usare Fit Manager in autonomia oppure collegare la scheda ricevuta dal tuo Trainer.")
+                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                        if source == .live {
+                            TrainerCodeEntryForm(code: $trainerCode, actionTitle: "Collega il mio Trainer") {
+                                await session.connectTrainer(code: trainerCode)
+                            }
+                        } else {
+                            Text("La modalità demo non invia né consuma codici reali.")
+                                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        }
                     }
                 }.clayCard()
 

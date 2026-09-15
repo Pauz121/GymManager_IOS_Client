@@ -48,8 +48,6 @@ enum ClientAppError: LocalizedError, Equatable, Sendable {
     case inactiveProfile
     case duplicateClientLinks
     case invalidClientLink
-    case registrationUnavailable
-    case trainerCodeUnavailable
     case message(String)
 
     var errorDescription: String? {
@@ -59,24 +57,63 @@ enum ClientAppError: LocalizedError, Equatable, Sendable {
         case .inactiveProfile: "L’account Cliente non è attivo. Contatta il tuo Trainer."
         case .duplicateClientLinks: "Sono presenti più collegamenti Cliente. Contatta l’assistenza."
         case .invalidClientLink: "Il collegamento al Trainer non è valido o non è attivo."
-        case .registrationUnavailable: "La registrazione autonoma sarà disponibile nella Fase 2. Nessun account è stato creato."
-        case .trainerCodeUnavailable: "Il collegamento tramite codice Trainer sarà disponibile nella Fase 2. Nessun codice è stato inviato o consumato."
         case .message(let text): text
         }
     }
 }
 
 protocol TrainerCodeActivating: Sendable {
-    func activate(code: String) async throws
+    func activate(code: String) async throws -> TrainerCodeActivationResult
+}
+
+struct TrainerCodeActivationResult: Decodable, Equatable, Sendable {
+    let clientID: UUID
+    let trainerID: UUID
+    let alreadyLinked: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case alreadyLinked
+        case clientID = "clientId"
+        case trainerID = "trainerId"
+    }
+}
+
+private struct TrainerCodeFunctionError: Decodable {
+    let error: String
 }
 
 struct TrainerCodeService: TrainerCodeActivating {
     static func normalized(_ code: String) -> String {
-        code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        code.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .uppercased()
     }
 
-    func activate(code: String) async throws {
-        _ = Self.normalized(code)
-        throw ClientAppError.trainerCodeUnavailable
+    static func isValid(_ code: String) -> Bool {
+        normalized(code).range(
+            of: #"^GM-[0-9A-F]{4}(-[0-9A-F]{4}){4}$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    func activate(code: String) async throws -> TrainerCodeActivationResult {
+        let normalizedCode = Self.normalized(code)
+        guard Self.isValid(normalizedCode) else {
+            throw ClientAppError.message("Inserisci un codice GymManager valido.")
+        }
+
+        do {
+            let result: TrainerCodeActivationResult = try await ClientSupabaseProvider.client.functions.invoke(
+                "redeem-client-link-code",
+                options: FunctionInvokeOptions(body: ["code": normalizedCode])
+            )
+            return result
+        } catch FunctionsError.httpError(_, let data) {
+            let message = (try? JSONDecoder().decode(TrainerCodeFunctionError.self, from: data))?.error
+                ?? "Collegamento al Trainer non riuscito."
+            throw ClientAppError.message(message)
+        } catch {
+            throw ClientAppError.message("Connessione non disponibile. Riprova tra poco.")
+        }
     }
 }

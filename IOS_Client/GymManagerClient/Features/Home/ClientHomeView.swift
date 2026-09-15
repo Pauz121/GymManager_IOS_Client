@@ -46,7 +46,6 @@ struct ClientHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                header
                 stepsCard
                 ClientSectionHeader(title: "Priorità", detail: "Oggi", symbol: "bolt.fill")
                 workoutCard
@@ -295,7 +294,9 @@ struct ClientHomeView: View {
         let workoutStatus = todayWorkout == nil ? "Riposo" : todayWorkoutExecution?.isCompleted == true ? "Fatto" : "Da fare"
         let workoutSymbol = todayWorkoutExecution?.isCompleted == true ? "checkmark" : todayWorkout == nil ? "moon.fill" : "dumbbell.fill"
 
-        return VStack(alignment: .leading, spacing: 18) {
+        return VStack(alignment: .leading, spacing: 16) {
+            header
+            Divider().overlay(.white.opacity(0.13))
             VStack(alignment: .leading, spacing: 5) {
                 Text("IL TUO OGGI").font(.caption.weight(.bold)).tracking(1.3).foregroundStyle(.white.opacity(0.66))
                 Text(dayStatusHeadline).font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(.white)
@@ -317,7 +318,7 @@ struct ClientHomeView: View {
                 }
             }
         }
-        .premiumCard()
+        .premiumCard(padding: 18)
         .accessibilityElement(children: .contain)
     }
 

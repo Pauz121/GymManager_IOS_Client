@@ -67,7 +67,7 @@ struct ClientNutritionView: View {
                 Text("\(plan.days.count) giorni").font(.caption).foregroundStyle(ClientClay.secondaryInk)
             }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     ForEach(plan.days) { day in
                         Button {
                             ClientHaptics.selection()
@@ -80,7 +80,7 @@ struct ClientNutritionView: View {
                         .accessibilityHint(isCurrentDay(day) ? "Giornata corrente, pasti modificabili" : "Consulta i pasti in sola lettura")
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.horizontal, 1).padding(.vertical, 5)
             }
         }
     }
@@ -93,10 +93,27 @@ struct ClientNutritionView: View {
             Text("\(day.meals.count)").font(.headline.monospacedDigit().weight(.bold))
             Text(isToday ? "OGGI" : "PASTI").font(.system(size: 9, weight: .bold))
         }
-        .foregroundStyle(isSelected ? Color.white : ClientClay.secondaryInk)
-        .frame(width: 62, minHeight: 64)
-        .background(isSelected ? ClientClay.brandGradient : LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(isToday ? ClientClay.sage : isSelected ? ClientClay.accentSoft : ClientClay.border, lineWidth: isToday ? 2 : 1) }
+        .foregroundStyle(isSelected ? ClientClay.ink : ClientClay.secondaryInk)
+        .frame(width: 72, minHeight: 72)
+        .background(
+            LinearGradient(
+                colors: isSelected
+                    ? [ClientClay.surfaceElevated, ClientClay.surfaceDeep]
+                    : [ClientClay.surfaceDeep, ClientClay.surface],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(
+                    isToday ? ClientClay.sage : isSelected ? ClientClay.accentSoft : ClientClay.border,
+                    lineWidth: isToday && isSelected ? 3 : isToday || isSelected ? 2 : 1
+                )
+        }
+        .shadow(color: isSelected ? (isToday ? ClientClay.sage : ClientClay.accent).opacity(0.18) : .clear, radius: 8, y: 4)
+        .scaleEffect(isSelected ? 1.025 : 1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(day.name), \(day.meals.count) pasti\(isToday ? ", oggi" : "")")
     }

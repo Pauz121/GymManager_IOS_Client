@@ -6,7 +6,7 @@ This inventory is the deletion gate for the temporary `ClientDesktop/` prototype
 | --- | --- | --- |
 | Separate Client application and session | `IOS_Client/GymManagerClient.xcodeproj`, independent app entry point and Client-specific Supabase auth storage | DONE |
 | Onboarding choice | Native welcome screen with “Ho un codice dal mio Trainer” and “Non ho un Trainer” paths | DONE |
-| Trainer code activation | Native UI plus a non-operational service contract; server-side atomic consumption remains Phase 2 | SCAFFOLDED / BACKEND PHASE 2 |
+| Trainer code activation | Native onboarding/Account UI invokes authenticated `redeem-client-link-code`, validates the code and reloads the linked identity; server migration/function deploy is still pending | IMPLEMENTED LOCALLY / REMOTE DEPLOY PENDING |
 | Standalone registration | Explicit Phase 2 unavailable state; no fake account creation | SCAFFOLDED / BACKEND PHASE 2 |
 | Existing Client sign-in | Native Supabase Auth sign-in and verified `profiles`/`clients.auth_user_id` identity resolution | DONE |
 | Five-destination navigation | SwiftUI `TabView`: Oggi, Scheda, Nutrizione, Progressi, Spazio | DONE |

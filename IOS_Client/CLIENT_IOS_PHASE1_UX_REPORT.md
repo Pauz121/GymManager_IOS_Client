@@ -2,6 +2,32 @@
 
 Date: 2026-09-13
 
+## Client registration and optional Trainer linking — 2026-09-15
+
+- The launch screen now contains only `FIT MANAGER`, `Accedi` and `Registrati`.
+- Registration is split into two native steps: personal data (`Nome`, `Cognome`, biological sex and email), then credentials (`Username`, password and confirmation). Client validation mirrors the backend contract; passwords are never stored or logged by the app.
+- Signup uses Supabase Auth with constrained metadata. The companion non-destructive migration creates the `client` profile inside the Auth-user transaction and never trusts a client-supplied role, Trainer ID or privileged flag.
+- A standalone signup creates only the Auth/profile identity, not a duplicate professional `clients` row. A later valid Trainer code atomically connects the authenticated user to the Client row that the Trainer already created.
+- After the first authenticated load, standalone Clients see the optional `Hai un codice di accesso?` flow. `Non ora` is persisted server-side so the prompt does not reappear; the same `TrainerCodeEntryForm` remains available in Account.
+- Existing Trainer-connected Clients keep their current login and plan-loading behavior. Connected accounts cannot request a second primary link or disconnect from the Client app.
+- Email-confirmation-required projects show a dedicated confirmation screen and return the user to login after verification.
+- Antigravity review `GYM-IOS-REGISTRATION-UX-20260915-001` failed before analysis because file-reading permission was denied; it produced no result and changed no files. The sanitized retry `GYM-IOS-REGISTRATION-UX-20260915-002` completed successfully (conversation `e0a13aba-3ca7-4183-8b44-7bbc544d6776`). Codex accepted the two-step hierarchy and shared code component with modifications: `Accedi` remains first, password minimum remains 12, codes use the real `GM-XXXX-XXXX-XXXX-XXXX-XXXX` format, and onboarding completion is server-persisted.
+- Static validation: PASS, 110 checks. Xcode build/XCTest and live Auth/email/linking smoke tests remain pending on macOS and on the correctly migrated backend.
+- Backend artifacts prepared locally: `20260915145227_client_self_registration.sql`, `client_self_registration.sql`, and the existing `redeem-client-link-code` safe error update. Production migration/function deploy: NOT APPLIED in this session.
+
+## Focused UX refinement and Trainer linking — 2026-09-15
+
+- Running Live Activity now uses a charcoal/black surface, white metric values and a brighter red accent for active and paused states.
+- Running opens with the primary `Inizia corsa`/`Riprendi corsa` action; assigned-session title, description and target blocks no longer delay entry.
+- The Running recap includes a horizontal distance scale with an exact marker for the kilometers recorded in the selected period.
+- Palestra and Riepilogo navigation/content cards use reduced padding and visual weight while retaining 44-point-or-larger controls.
+- Nutrition keeps horizontal navigation but uses larger 72-point day controls, a green outline for today and an outline/elevation selection state without red fill.
+- Home profile/greeting, daily headline, steps, meals, workout and Agenda status now share one premium hero instead of two detached blocks.
+- Progress always renders the current calendar week from Monday through Sunday and includes both completed gym and running activity per day.
+- Trainer-code linking is implemented locally through the authenticated Supabase Edge Function from onboarding and Account, with format validation, sanitized errors and identity refresh. No service-role key is present in the app. Production remains unavailable until the already prepared migration and Edge Function receive a separately authorized Supabase deploy.
+- Static validation: PASS, 105 checks. Native Xcode build/XCTest and visual device validation remain pending on macOS.
+- Antigravity/Gemini: NOT RUN. The external code-transmission request was blocked before execution; no code or files were sent or modified. Codex completed the scoped implementation locally.
+
 ## Global dark premium visual redesign — 2026-09-15
 
 The native Client app now uses one centralized dark fitness/performance visual system while preserving the existing functional architecture, navigation, local activity state, HealthKit, Core Location, ActivityKit and Supabase read boundaries.

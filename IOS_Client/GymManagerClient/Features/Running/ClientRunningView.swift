@@ -21,9 +21,10 @@ struct ClientRunningView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("CORSA").font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(activeRun == nil ? "PRONTO A CORRERE?" : "CORSA IN CORSO")
+                    .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.68))
                 Button {
                     if activeRun == nil {
                         session.beginRun(plan)
@@ -35,18 +36,10 @@ struct ClientRunningView: View {
                 }
                 .buttonStyle(ClayPrimaryButtonStyle())
                 .accessibilityHint("Apre il rilevamento GPS della corsa")
-
-                Divider().overlay(.white.opacity(0.14))
-                Text(plan.title).font(.headline.weight(.bold)).foregroundStyle(.white)
-                Text(plan.detail).font(.subheadline).foregroundStyle(.white.opacity(0.68))
-                HStack(spacing: 18) {
-                    if let minutes = plan.targetMinutes { metric("Durata", value: "\(minutes) min", symbol: "timer") }
-                    if let distance = plan.targetDistanceKm { metric("Distanza", value: "\(distance.formatted()) km", symbol: "location") }
-                }
                 Label("Percorso e Live Activity restano visibili anche con schermo bloccato.", systemImage: "lock.iphone")
                     .font(.caption).foregroundStyle(.white.opacity(0.66))
             }
-            .premiumCard(tint: ClientClay.accent)
+            .premiumCard(tint: ClientClay.accent, padding: 16)
 
             personalBestSection
 
@@ -130,13 +123,6 @@ struct ClientRunningView: View {
         .clayCard(padding: 15)
     }
 
-    private func metric(_ title: String, value: String, symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(title, systemImage: symbol).font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            Text(value).font(.headline)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 }
 
 private struct ClientRunningExecutionView: View {

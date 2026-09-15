@@ -21,14 +21,16 @@ enum ClientDemoData {
                 trainerID: UUID(uuidString: "DE000000-0000-0000-0000-000000000003"),
                 mode: .trainerConnected,
                 firstName: "Giulio", lastName: "Demo", displayName: "Giulio Demo",
-                username: "ctrainer.demo", email: "ctrainer@example.invalid", trainerName: "Trainer Demo"
+                username: "ctrainer.demo", email: "ctrainer@example.invalid", trainerName: "Trainer Demo",
+                biologicalSex: .male, hasCompletedInitialOnboarding: true
             )
         case .standalone:
             return ClientIdentity(
                 authUserID: UUID(uuidString: "DE000000-0000-0000-0000-000000000101")!,
                 clientID: nil, trainerID: nil, mode: .standalone,
                 firstName: "Giulio", lastName: "Demo", displayName: "Giulio Demo",
-                username: "cclient.demo", email: "cclient@example.invalid", trainerName: nil
+                username: "cclient.demo", email: "cclient@example.invalid", trainerName: nil,
+                biologicalSex: .male, hasCompletedInitialOnboarding: true
             )
         }
     }

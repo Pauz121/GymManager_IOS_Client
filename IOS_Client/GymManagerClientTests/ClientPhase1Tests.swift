@@ -49,21 +49,71 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertThrowsError(try PersonalAgendaStore.validatedTitle(String(repeating: "a", count: 161)))
     }
 
-    func testTrainerCodeIsNormalizedWithoutClaimingActivation() {
-        XCTAssertEqual(TrainerCodeService.normalized("  ab-cd  "), "AB-CD")
+    func testTrainerCodeIsNormalized() {
+        XCTAssertEqual(TrainerCodeService.normalized("  gm-1234-abcd-5678-90ef-1122  "), "GM-1234-ABCD-5678-90EF-1122")
     }
 
-    func testTrainerCodeContractFailsClosed() async {
+    func testTrainerCodeValidationMatchesServerContract() {
+        XCTAssertTrue(TrainerCodeService.isValid("GM-1234-ABCD-5678-90EF-1122"))
+        XCTAssertFalse(TrainerCodeService.isValid("ABC"))
+        XCTAssertFalse(TrainerCodeService.isValid("GM-1234-ABCD-5678-90EF"))
+    }
+
+    func testInvalidTrainerCodeFailsBeforeNetworkCall() async {
         do {
             try await TrainerCodeService().activate(code: "ABC")
-            XCTFail("The Phase 1 scaffold must never report success")
+            XCTFail("An invalid code must be rejected locally")
         } catch {
-            XCTAssertEqual(error as? ClientAppError, .trainerCodeUnavailable)
+            XCTAssertEqual(error as? ClientAppError, .message("Inserisci un codice GymManager valido."))
         }
     }
 
-    func testRegistrationUnavailableMessageDoesNotClaimCreation() {
-        XCTAssertTrue(ClientAppError.registrationUnavailable.localizedDescription.contains("Nessun account"))
+    func testTrainerCodeActivationResponseDecodesServerPayload() throws {
+        let payload = #"{"clientId":"10000000-0000-4000-8000-000000000001","trainerId":"20000000-0000-4000-8000-000000000002","alreadyLinked":false}"#.data(using: .utf8)!
+        let result = try JSONDecoder().decode(TrainerCodeActivationResult.self, from: payload)
+        XCTAssertEqual(result.clientID.uuidString.lowercased(), "10000000-0000-4000-8000-000000000001")
+        XCTAssertEqual(result.trainerID.uuidString.lowercased(), "20000000-0000-4000-8000-000000000002")
+        XCTAssertFalse(result.alreadyLinked)
+    }
+
+    func testProgressWeekAlwaysRunsMondayThroughSunday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let wednesday = Date(timeIntervalSince1970: 1_757_462_400) // 2025-09-10 00:00 UTC
+        let days = ClientProgressWeek.mondayToSunday(containing: wednesday, calendar: calendar)
+        XCTAssertEqual(days.count, 7)
+        XCTAssertEqual(calendar.component(.weekday, from: days.first!), 2)
+        XCTAssertEqual(calendar.component(.weekday, from: days.last!), 1)
+    }
+
+    func testRegistrationStepOneRequiresBiologicalSex() {
+        var input = validRegistrationInput()
+        input.biologicalSex = nil
+        XCTAssertEqual(ClientRegistrationValidation.stepOneIssue(for: input)?.field, .biologicalSex)
+    }
+
+    func testRegistrationStepOneNormalizesAndAcceptsValidData() {
+        let input = validRegistrationInput()
+        XCTAssertNil(ClientRegistrationValidation.stepOneIssue(for: input))
+        XCTAssertEqual(ClientRegistrationValidation.normalizedEmail("  MARIO@EXAMPLE.COM "), "mario@example.com")
+        XCTAssertEqual(ClientRegistrationValidation.normalizedName("  Mario  "), "Mario")
+    }
+
+    func testRegistrationRejectsInvalidUsernameBeforeAuth() {
+        var input = validRegistrationInput()
+        input.username = "nome con spazi"
+        XCTAssertEqual(ClientRegistrationValidation.stepTwoIssue(for: input)?.field, .username)
+    }
+
+    func testRegistrationRequiresTwelveCharacterMatchingPasswords() {
+        var input = validRegistrationInput()
+        input.password = "breve"
+        input.passwordConfirmation = "breve"
+        XCTAssertEqual(ClientRegistrationValidation.stepTwoIssue(for: input)?.field, .password)
+
+        input.password = "password-sicura"
+        input.passwordConfirmation = "password-diversa"
+        XCTAssertEqual(ClientRegistrationValidation.stepTwoIssue(for: input)?.field, .passwordConfirmation)
     }
 
     func testMondayUsesBackendWeekdayOne() {
@@ -108,6 +158,7 @@ final class ClientPhase1Tests: XCTestCase {
         let identity = ClientDemoData.identity(for: .trainerConnected)
         XCTAssertEqual(identity.mode, .trainerConnected)
         XCTAssertTrue(identity.authUserID.uuidString.hasPrefix("DE000000"))
+        XCTAssertTrue(identity.hasCompletedInitialOnboarding)
     }
 
     func testDemoHasCurrentWorkoutAndNutrition() {
@@ -426,6 +477,18 @@ final class ClientPhase1Tests: XCTestCase {
             routePoint(distanceMeters: 0, elapsed: 0, start: start),
             routePoint(distanceMeters: distanceMeters, elapsed: duration, start: start)
         ]
+    }
+
+    private func validRegistrationInput() -> ClientRegistrationInput {
+        ClientRegistrationInput(
+            firstName: "Mario",
+            lastName: "Rossi",
+            biologicalSex: .male,
+            email: "mario@example.com",
+            username: "mario.rossi",
+            password: "password-sicura",
+            passwordConfirmation: "password-sicura"
+        )
     }
 
     private func routePoint(distanceMeters: Double, elapsed: TimeInterval, start: Date) -> ClientRoutePoint {

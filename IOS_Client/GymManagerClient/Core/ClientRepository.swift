@@ -13,7 +13,7 @@ final class ClientRepository {
     func identity(authUserID: UUID, email: String?) async throws -> ClientIdentity {
         let profiles: [ClientProfileRow] = try await client
             .from("profiles")
-            .select("id,username,display_name,role,status,is_active")
+            .select("id,username,display_name,role,status,is_active,first_name,last_name,biological_sex,client_onboarding_completed_at")
             .eq("id", value: authUserID.uuidString)
             .limit(1)
             .execute()
@@ -27,7 +27,7 @@ final class ClientRepository {
 
         let links: [ClientLinkRow] = try await client
             .from("clients")
-            .select("id,auth_user_id,trainer_id,first_name,last_name,status")
+            .select("id,auth_user_id,trainer_id,first_name,last_name,status,biological_sex")
             .eq("auth_user_id", value: authUserID.uuidString)
             .limit(2)
             .execute()
@@ -46,7 +46,10 @@ final class ClientRepository {
                 displayName: profile.displayName,
                 username: profile.username,
                 email: Self.publicEmail(email),
-                trainerName: nil
+                trainerName: nil,
+                biologicalSex: link.biologicalSex.flatMap(ClientBiologicalSex.init(rawValue:))
+                    ?? profile.biologicalSex.flatMap(ClientBiologicalSex.init(rawValue:)),
+                hasCompletedInitialOnboarding: profile.clientOnboardingCompletedAt != nil
             )
         }
 
@@ -56,13 +59,25 @@ final class ClientRepository {
             clientID: nil,
             trainerID: nil,
             mode: .standalone,
-            firstName: names.first ?? profile.displayName,
-            lastName: names.count > 1 ? names[1] : "",
+            firstName: profile.firstName ?? names.first ?? profile.displayName,
+            lastName: profile.lastName ?? (names.count > 1 ? names[1] : ""),
             displayName: profile.displayName,
             username: profile.username,
             email: Self.publicEmail(email),
-            trainerName: nil
+            trainerName: nil,
+            biologicalSex: profile.biologicalSex.flatMap(ClientBiologicalSex.init(rawValue:)),
+            hasCompletedInitialOnboarding: profile.clientOnboardingCompletedAt != nil
         )
+    }
+
+    func completeInitialOnboarding() async throws {
+        let completed: Bool = try await client
+            .rpc("complete_client_onboarding")
+            .execute()
+            .value
+        guard completed else {
+            throw ClientAppError.message("Non è stato possibile completare il primo accesso.")
+        }
     }
 
     func snapshot(for identity: ClientIdentity, today: Date = Date()) async -> ClientSnapshot {
@@ -215,8 +230,8 @@ final class ClientRepository {
 
 }
 
-private struct ClientProfileRow: Decodable { let id: UUID; let username: String; let displayName: String; let role: String; let status: String; let isActive: Bool?; enum CodingKeys: String, CodingKey { case id, username, role, status; case displayName = "display_name"; case isActive = "is_active" } }
-private struct ClientLinkRow: Decodable { let id: UUID; let authUserID: UUID?; let trainerID: UUID; let firstName: String; let lastName: String; let status: String; enum CodingKeys: String, CodingKey { case id, status; case authUserID = "auth_user_id"; case trainerID = "trainer_id"; case firstName = "first_name"; case lastName = "last_name" } }
+private struct ClientProfileRow: Decodable { let id: UUID; let username: String; let displayName: String; let role: String; let status: String; let isActive: Bool?; let firstName: String?; let lastName: String?; let biologicalSex: String?; let clientOnboardingCompletedAt: String?; enum CodingKeys: String, CodingKey { case id, username, role, status; case displayName = "display_name"; case isActive = "is_active"; case firstName = "first_name"; case lastName = "last_name"; case biologicalSex = "biological_sex"; case clientOnboardingCompletedAt = "client_onboarding_completed_at" } }
+private struct ClientLinkRow: Decodable { let id: UUID; let authUserID: UUID?; let trainerID: UUID; let firstName: String; let lastName: String; let status: String; let biologicalSex: String?; enum CodingKeys: String, CodingKey { case id, status; case authUserID = "auth_user_id"; case trainerID = "trainer_id"; case firstName = "first_name"; case lastName = "last_name"; case biologicalSex = "biological_sex" } }
 private struct WorkoutPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let title: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; let durationWeeks: Int?; let currentWeek: Int; enum CodingKeys: String, CodingKey { case id, title, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on"; case durationWeeks = "duration_weeks"; case currentWeek = "current_week" }; func isVisible(on date: Date, clientID: UUID, trainerID: UUID) -> Bool { guard self.clientID == clientID, self.trainerID == trainerID, status == "active", planKind == "client_plan", publishedAt != nil else { return false }; let day = Calendar.current.startOfDay(for: date); if let start = clientParseDay(startsOn), start > day { return false }; if let end = clientParseDay(endsOn), end < day { return false }; return true } }
 private struct WorkoutDayRow: Decodable { let id: UUID; let workoutPlanID: UUID; let name: String; let weekday: Int?; let dayOrder: Int; enum CodingKeys: String, CodingKey { case id, name, weekday; case workoutPlanID = "workout_plan_id"; case dayOrder = "day_order" } }
 private struct ExerciseRow: Decodable { let id: UUID?; let name: String; let videoURL: String?; enum CodingKeys: String, CodingKey { case id, name; case videoURL = "video_url" } }

@@ -1,6 +1,16 @@
 import Charts
 import SwiftUI
 
+enum ClientProgressWeek {
+    static func mondayToSunday(containing date: Date, calendar: Calendar = .autoupdatingCurrent) -> [Date] {
+        var weekCalendar = calendar
+        weekCalendar.firstWeekday = 2
+        weekCalendar.minimumDaysInFirstWeek = 4
+        guard let monday = weekCalendar.dateInterval(of: .weekOfYear, for: date)?.start else { return [] }
+        return (0..<7).compactMap { weekCalendar.date(byAdding: .day, value: $0, to: monday) }
+    }
+}
+
 struct ClientProgressView: View {
     let entries: [ClientProgressEntry]
     let identity: ClientIdentity
@@ -65,14 +75,15 @@ struct ClientProgressView: View {
 
     private var weeklyActivity: [ActivityPoint] {
         let calendar = Calendar.autoupdatingCurrent
-        let today = calendar.startOfDay(for: Date())
-        return (0..<7).reversed().compactMap { offset in
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
-            let count = session.activity.workouts.filter { execution in
+        return ClientProgressWeek.mondayToSunday(containing: Date(), calendar: calendar).map { day in
+            let gymCount = session.activity.workouts.filter { execution in
                 guard let completedAt = execution.completedAt else { return false }
                 return calendar.isDate(completedAt, inSameDayAs: day)
             }.count
-            return ActivityPoint(date: day, count: count)
+            let runningCount = session.activity.runningResults.filter {
+                calendar.isDate($0.completedAt, inSameDayAs: day)
+            }.count
+            return ActivityPoint(date: day, count: gymCount + runningCount)
         }
     }
 
@@ -238,7 +249,7 @@ struct ClientProgressView: View {
 
     private var weeklyWorkoutChart: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ClientSectionHeader(title: "Ultimi 7 giorni", detail: "Workout completati", symbol: "calendar.badge.checkmark")
+            ClientSectionHeader(title: "Settimana corrente", detail: "Lunedì – Domenica", symbol: "calendar.badge.checkmark")
             Chart(weeklyActivity) { point in
                 BarMark(x: .value("Giorno", point.date, unit: .day), y: .value("Allenamenti", point.count))
                     .foregroundStyle(LinearGradient(colors: [ClientClay.accent, ClientClay.accent.opacity(0.55)], startPoint: .top, endPoint: .bottom))
@@ -255,7 +266,7 @@ struct ClientProgressView: View {
             .chartYAxis(.hidden)
             .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
             .frame(height: 130)
-            .accessibilityLabel("Allenamenti completati negli ultimi sette giorni")
+            .accessibilityLabel("Attività completate nella settimana da lunedì a domenica")
         }
         .clayCard()
     }

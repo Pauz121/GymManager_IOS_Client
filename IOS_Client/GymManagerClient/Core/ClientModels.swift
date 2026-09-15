@@ -9,6 +9,79 @@ enum ClientDataSource: String, Codable, Sendable {
     case live, demo
 }
 
+enum ClientBiologicalSex: String, Codable, CaseIterable, Identifiable, Sendable {
+    case male
+    case female
+
+    var id: String { rawValue }
+    var title: String { self == .male ? "Uomo" : "Donna" }
+}
+
+struct ClientRegistrationInput: Equatable, Sendable {
+    var firstName: String
+    var lastName: String
+    var biologicalSex: ClientBiologicalSex?
+    var email: String
+    var username: String
+    var password: String
+    var passwordConfirmation: String
+}
+
+enum ClientRegistrationField: Equatable, Sendable {
+    case firstName, lastName, biologicalSex, email, username, password, passwordConfirmation, form
+}
+
+struct ClientRegistrationIssue: Equatable, Sendable {
+    let field: ClientRegistrationField
+    let message: String
+}
+
+enum ClientRegistrationValidation {
+    static func normalizedName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func normalizedEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func normalizedUsername(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func stepOneIssue(for input: ClientRegistrationInput) -> ClientRegistrationIssue? {
+        if !(2...80).contains(normalizedName(input.firstName).count) {
+            return ClientRegistrationIssue(field: .firstName, message: "Inserisci un nome valido.")
+        }
+        if !(2...80).contains(normalizedName(input.lastName).count) {
+            return ClientRegistrationIssue(field: .lastName, message: "Inserisci un cognome valido.")
+        }
+        if input.biologicalSex == nil {
+            return ClientRegistrationIssue(field: .biologicalSex, message: "Seleziona il sesso.")
+        }
+        let email = normalizedEmail(input.email)
+        let parts = email.split(separator: "@", omittingEmptySubsequences: false)
+        if parts.count != 2 || parts[0].isEmpty || !parts[1].contains(".") || email.contains(" ") {
+            return ClientRegistrationIssue(field: .email, message: "Inserisci un indirizzo email valido.")
+        }
+        return nil
+    }
+
+    static func stepTwoIssue(for input: ClientRegistrationInput) -> ClientRegistrationIssue? {
+        let username = normalizedUsername(input.username)
+        if username.range(of: #"^[A-Za-z0-9._-]{3,32}$"#, options: .regularExpression) == nil {
+            return ClientRegistrationIssue(field: .username, message: "Usa 3–32 caratteri: lettere, numeri, punto, trattino o underscore.")
+        }
+        if input.password.count < 12 {
+            return ClientRegistrationIssue(field: .password, message: "La password deve contenere almeno 12 caratteri.")
+        }
+        if input.password != input.passwordConfirmation {
+            return ClientRegistrationIssue(field: .passwordConfirmation, message: "Le password non coincidono.")
+        }
+        return nil
+    }
+}
+
 struct ClientIdentity: Codable, Equatable, Sendable {
     let authUserID: UUID
     let clientID: UUID?
@@ -20,6 +93,8 @@ struct ClientIdentity: Codable, Equatable, Sendable {
     let username: String
     let email: String?
     let trainerName: String?
+    let biologicalSex: ClientBiologicalSex?
+    let hasCompletedInitialOnboarding: Bool
 }
 
 struct ClientExercise: Identifiable, Codable, Equatable, Sendable {

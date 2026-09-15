@@ -7,6 +7,7 @@ final class ClientSessionStore: ObservableObject {
     enum State {
         case loading
         case onboarding
+        case emailConfirmation(email: String)
         case active(identity: ClientIdentity, snapshot: ClientSnapshot, source: ClientDataSource)
         case failure(String)
     }
@@ -14,24 +15,29 @@ final class ClientSessionStore: ObservableObject {
     @Published private(set) var state: State = .loading
     @Published private(set) var agenda: [PersonalAgendaTask] = []
     @Published private(set) var activity: ClientActivityState = .empty
+    @Published private(set) var shouldOfferTrainerCode = false
     @Published var isSubmitting = false
     @Published var notice: String?
+    @Published var registrationIssue: ClientRegistrationIssue?
 
     private let auth: AuthClient
     private let repository: ClientRepository
     private let agendaStore: PersonalAgendaStore
     private let activityStore: ClientActivityStore
+    private let trainerCodeActivator: any TrainerCodeActivating
 
     init(
         auth: AuthClient = ClientSupabaseProvider.client.auth,
         repository: ClientRepository = .shared,
         agendaStore: PersonalAgendaStore = PersonalAgendaStore(),
-        activityStore: ClientActivityStore = ClientActivityStore()
+        activityStore: ClientActivityStore = ClientActivityStore(),
+        trainerCodeActivator: any TrainerCodeActivating = TrainerCodeService()
     ) {
         self.auth = auth
         self.repository = repository
         self.agendaStore = agendaStore
         self.activityStore = activityStore
+        self.trainerCodeActivator = trainerCodeActivator
     }
 
     func prepare() async {
@@ -54,6 +60,7 @@ final class ClientSessionStore: ObservableObject {
             return
         }
         isSubmitting = true
+        registrationIssue = nil
         defer { isSubmitting = false }
         do {
             let response = try await auth.signIn(email: email, password: password)
@@ -64,16 +71,113 @@ final class ClientSessionStore: ObservableObject {
         }
     }
 
+    func register(_ input: ClientRegistrationInput) async {
+        if let issue = ClientRegistrationValidation.stepOneIssue(for: input)
+            ?? ClientRegistrationValidation.stepTwoIssue(for: input) {
+            registrationIssue = issue
+            return
+        }
+        guard let biologicalSex = input.biologicalSex else { return }
+
+        let firstName = ClientRegistrationValidation.normalizedName(input.firstName)
+        let lastName = ClientRegistrationValidation.normalizedName(input.lastName)
+        let email = ClientRegistrationValidation.normalizedEmail(input.email)
+        let username = ClientRegistrationValidation.normalizedUsername(input.username)
+
+        isSubmitting = true
+        registrationIssue = nil
+        defer { isSubmitting = false }
+        do {
+            let response = try await auth.signUp(
+                email: email,
+                password: input.password,
+                data: [
+                    "account_type": .string("client_self_registration"),
+                    "username": .string(username),
+                    "first_name": .string(firstName),
+                    "last_name": .string(lastName),
+                    "biological_sex": .string(biologicalSex.rawValue)
+                ]
+            )
+
+            if let activeSession = response.session {
+                await load(userID: activeSession.user.id, email: activeSession.user.email)
+            } else {
+                state = .emailConfirmation(email: email)
+            }
+        } catch {
+            let message = error.localizedDescription.lowercased()
+            if message.contains("password") {
+                registrationIssue = ClientRegistrationIssue(field: .password, message: "La password non rispetta i requisiti di sicurezza.")
+            } else if message.contains("email") && (message.contains("registered") || message.contains("already")) {
+                registrationIssue = ClientRegistrationIssue(field: .form, message: "Esiste già un account con questa email.")
+            } else if message.contains("username") || message.contains("database error saving new user") {
+                registrationIssue = ClientRegistrationIssue(field: .form, message: "Email o username già utilizzati.")
+            } else {
+                registrationIssue = ClientRegistrationIssue(field: .form, message: "Registrazione non riuscita. Riprova tra poco.")
+            }
+        }
+    }
+
+    @discardableResult
+    func connectTrainer(code: String) async -> Bool {
+        guard case .active(let identity, _, let source) = state,
+              source == .live,
+              identity.mode == .standalone else {
+            notice = "Il codice può essere usato solo da un account Cliente non ancora collegato."
+            return false
+        }
+        guard TrainerCodeService.isValid(code) else {
+            notice = "Inserisci un codice GymManager valido."
+            return false
+        }
+
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            let activation = try await trainerCodeActivator.activate(code: code)
+            try await repository.completeInitialOnboarding()
+            await load(userID: identity.authUserID, email: identity.email)
+            guard case .active(let linkedIdentity, _, _) = state,
+                  linkedIdentity.clientID == activation.clientID,
+                  linkedIdentity.trainerID == activation.trainerID else {
+                notice = "Codice riscattato, ma il profilo non è ancora aggiornato. Trascina per ricaricare."
+                return false
+            }
+            notice = activation.alreadyLinked ? "Account già collegato al Trainer." : "Collegamento al Trainer completato."
+            return true
+        } catch {
+            notice = (error as? LocalizedError)?.errorDescription ?? "Collegamento al Trainer non riuscito."
+            return false
+        }
+    }
+
+    func skipTrainerLinking() async {
+        guard case .active(let identity, _, let source) = state, source == .live else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await repository.completeInitialOnboarding()
+            await load(userID: identity.authUserID, email: identity.email)
+        } catch {
+            notice = (error as? LocalizedError)?.errorDescription ?? "Non è stato possibile completare il primo accesso."
+        }
+    }
+
     func signOut() async {
         try? await auth.signOut(scope: .local)
         agenda = []
         activity = .empty
+        shouldOfferTrainerCode = false
         notice = nil
+        registrationIssue = nil
         state = .onboarding
     }
 
     func showOnboarding() {
+        shouldOfferTrainerCode = false
         notice = nil
+        registrationIssue = nil
         state = .onboarding
     }
 
@@ -117,6 +221,7 @@ final class ClientSessionStore: ObservableObject {
             try? activityStore.save(activity, userID: identity.authUserID, source: .demo)
         }
         state = .active(identity: identity, snapshot: snapshot, source: .demo)
+        shouldOfferTrainerCode = false
     }
     #endif
 
@@ -345,7 +450,9 @@ final class ClientSessionStore: ObservableObject {
             agenda = agendaStore.load(userID: identity.authUserID, source: .live)
             activity = activityStore.load(userID: identity.authUserID, source: .live)
             state = .active(identity: identity, snapshot: snapshot, source: .live)
+            shouldOfferTrainerCode = identity.mode == .standalone && !identity.hasCompletedInitialOnboarding
         } catch {
+            shouldOfferTrainerCode = false
             state = .failure((error as? LocalizedError)?.errorDescription ?? "Impossibile verificare il profilo Cliente.")
         }
     }

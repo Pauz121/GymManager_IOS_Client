@@ -43,7 +43,7 @@ An active Client profile without a linked `clients` row is treated as standalone
 
 ### Trainer code
 
-The native UI and a fail-closed service contract exist. No code is sent or consumed. The missing backend remains Phase 2 and must be implemented server-side with an unpredictable one-time value, atomic consumption, `used_at`, optional `expires_at`, Auth-to-existing-client linking and no duplicate `clients` row.
+The native UI now validates the `GM-XXXX-XXXX-XXXX-XXXX-XXXX` format and invokes the authenticated `redeem-client-link-code` Edge Function from onboarding or Account. After a successful atomic redemption it reloads identity and professional data, while server errors remain sanitized. The existing migration keeps codes in a private schema and prevents reuse or cross-account linking. The migration and Edge Function still require an explicitly authorized Supabase deployment before this flow can work in production.
 
 ## Data and security
 
@@ -108,7 +108,7 @@ The read-only validator `IOS_Client/scripts/validate-client-ios.ps1` completed 2
 26. no Client reference in the Trainer project;
 27. no Client application artifact remains inside `IOS/`.
 
-The Client test target contains 24 unit tests covering identity normalization, professional read-only policy, Trainer connection protection, local Agenda isolation and validation, fail-closed code activation, date/week logic, empty/standalone state, Debug demo data, one-way updates and the HealthKit boundary.
+The Client test target includes coverage for identity normalization, professional read-only policy, Trainer connection protection, local Agenda isolation and validation, Trainer-code normalization/validation/response decoding, fixed Monday–Sunday week logic, empty/standalone state, Debug demo data, one-way updates and the HealthKit boundary.
 
 `git diff --check` passed for tracked changes and the tracked Trainer tree compares unchanged with `HEAD`.
 
@@ -122,7 +122,7 @@ This Windows host has neither Xcode nor the Apple SDK, so neither compilation no
 
 ## Phase 2
 
-- Secure server-side Trainer-code issue/consume flow and account provisioning.
+- Deploy and smoke-test the already prepared private Trainer-code migration and Edge Functions in the authorized Supabase environment.
 - Standalone registration plus personal workout/nutrition builders.
 - App icon/branding production assets and complete Dark Mode palette.
 - Push notifications and publication event feed if the backend exposes a safe contract.

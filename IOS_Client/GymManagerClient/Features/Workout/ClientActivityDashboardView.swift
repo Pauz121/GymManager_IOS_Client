@@ -1,4 +1,5 @@
 import Charts
+import Foundation
 import SwiftUI
 
 struct ClientActivityDashboardView: View {
@@ -36,7 +37,7 @@ struct ClientActivityDashboardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             ClientPageTitle("Attività", eyebrow: "Tutto il movimento", subtitle: "Palestra e corsa, riunite senza duplicare le sessioni.")
             calendarCard
             selectedDayCard
@@ -243,6 +244,7 @@ struct ClientActivityRecapView: View {
             periodSelector
             hero
             metricGrid
+            if summary.runningDistanceKm > 0 { distanceScaleIndicator }
             if buckets.isEmpty {
                 ClientEmptyState(symbol: "chart.bar.xaxis", title: "Nessuna attività nel periodo", message: "Completa una sessione in palestra o una corsa per vedere il riepilogo.")
             } else {
@@ -278,24 +280,76 @@ struct ClientActivityRecapView: View {
         HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("GIORNI ATTIVI").font(.caption.weight(.bold)).tracking(1).foregroundStyle(.white.opacity(0.64))
-                Text("\(summary.activeDays)").font(.system(size: 48, weight: .heavy, design: .rounded).monospacedDigit()).foregroundStyle(.white)
+                Text("\(summary.activeDays)").font(.system(size: 38, weight: .heavy, design: .rounded).monospacedDigit()).foregroundStyle(.white)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 5) {
                 Text("TEMPO TOTALE").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.64))
-                Text(ClientActivityFormat.compactDuration(summary.activeSeconds)).font(.title2.monospacedDigit().weight(.bold)).foregroundStyle(.white)
+                Text(ClientActivityFormat.compactDuration(summary.activeSeconds)).font(.headline.monospacedDigit().weight(.bold)).foregroundStyle(.white)
             }
         }
-        .premiumCard(tint: ClientClay.sage)
+        .premiumCard(tint: ClientClay.sage, padding: 15)
     }
 
     private var metricGrid: some View {
         LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ClientMetricTile(title: "Palestra", value: "\(summary.gymSessions)", detail: "sessioni completate", symbol: "dumbbell.fill", tint: ClientClay.accent)
-            ClientMetricTile(title: "Corsa", value: "\(summary.runs)", detail: "uscite registrate", symbol: "figure.run", tint: ClientClay.runAccent)
-            ClientMetricTile(title: "Distanza", value: summary.runningDistanceKm > 0 ? "\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) km" : "—", detail: "solo GPS reale", symbol: "road.lanes", tint: ClientClay.runAccent)
-            ClientMetricTile(title: "Personal Best", value: "\(summary.personalBests)", detail: "ottenuti nel periodo", symbol: "trophy.fill", tint: ClientClay.gold)
+            compactMetric("Palestra", value: "\(summary.gymSessions)", symbol: "dumbbell.fill", tint: ClientClay.accent)
+            compactMetric("Corsa", value: "\(summary.runs)", symbol: "figure.run", tint: ClientClay.runAccent)
+            compactMetric("Distanza", value: summary.runningDistanceKm > 0 ? "\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) km" : "—", symbol: "road.lanes", tint: ClientClay.runAccent)
+            compactMetric("Personal Best", value: "\(summary.personalBests)", symbol: "trophy.fill", tint: ClientClay.gold)
         }
+    }
+
+    private func compactMetric(_ title: String, value: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.bold)).foregroundStyle(tint)
+                .frame(width: 34, height: 34)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value).font(.headline.monospacedDigit().weight(.bold)).foregroundStyle(ClientClay.ink)
+                Text(title).font(.caption2.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
+            }
+            Spacer(minLength: 0)
+        }
+        .clayCard(padding: 11)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var distanceScaleIndicator: some View {
+        let maximum = max(5, ceil(summary.runningDistanceKm / 5) * 5)
+        let ratio = min(1, max(0, summary.runningDistanceKm / maximum))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Distanza nel periodo", systemImage: "road.lanes")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.ink)
+                Spacer()
+                Text("\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) km")
+                    .font(.headline.monospacedDigit()).foregroundStyle(ClientClay.runAccent)
+            }
+            GeometryReader { proxy in
+                let markerX = max(CGFloat(7), min(proxy.size.width - 7, proxy.size.width * CGFloat(ratio)))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(ClientClay.inset).frame(height: 8)
+                    Capsule().fill(ClientClay.runAccent.opacity(0.55)).frame(width: markerX, height: 8)
+                    Circle().fill(ClientClay.runAccent).frame(width: 14, height: 14)
+                        .overlay { Circle().stroke(ClientClay.ink, lineWidth: 2) }
+                        .offset(x: markerX - 7)
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .frame(height: 16)
+            HStack {
+                Text("0 km")
+                Spacer()
+                Text("\(maximum.formatted(.number.precision(.fractionLength(0)))) km")
+            }
+            .font(.caption2.monospacedDigit()).foregroundStyle(ClientClay.secondaryInk)
+        }
+        .clayCard(padding: 13)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Indicatore distanza percorsa")
+        .accessibilityValue("\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) chilometri su una scala di \(maximum.formatted(.number.precision(.fractionLength(0))))")
     }
 
     private var distanceChart: some View {
@@ -314,11 +368,11 @@ struct ClientActivityRecapView: View {
                 )
                 .foregroundStyle(ClientClay.runAccent)
             }
-            .frame(height: 170)
+            .frame(height: 150)
             .chartYAxisLabel("km")
             .chartPlotStyle { $0.background(ClientClay.inset.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 12)) }
         }
-        .clayCard()
+        .clayCard(padding: 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Grafico dei chilometri corsi nel periodo selezionato")
     }
