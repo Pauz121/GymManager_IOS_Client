@@ -128,6 +128,7 @@ struct ClientSnapshot: Codable, Equatable, Sendable {
     var warnings: [String]
     var capabilities: ClientCapabilities = .none
     var runningPlan: ClientRunningPlan? = nil
+    var workoutHistory: [ClientWorkoutPlan]? = nil
 
     static let empty = ClientSnapshot(
         workout: nil,

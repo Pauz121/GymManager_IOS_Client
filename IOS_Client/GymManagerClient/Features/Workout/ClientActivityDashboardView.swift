@@ -94,6 +94,7 @@ struct ClientActivityDashboardView: View {
         let items = allItems.filter { calendar.isDate($0.completedAt, inSameDayAs: date) }
         let hasGym = items.contains { $0.kind == .gym }
         let hasRun = items.contains { $0.kind == .running }
+        let hasActivity = hasGym || hasRun
 
         return Button {
             guard isInMonth else { return }
@@ -103,18 +104,20 @@ struct ClientActivityDashboardView: View {
             VStack(spacing: 3) {
                 Text(date.formatted(.dateTime.day()))
                     .font(.caption.weight(isSelected || isToday ? .bold : .medium))
-                    .foregroundStyle(isInMonth ? ClientClay.ink : ClientClay.tertiaryInk)
+                    .foregroundStyle(hasActivity ? Color.white : isInMonth ? ClientClay.ink : ClientClay.tertiaryInk)
                 HStack(spacing: 2) {
-                    if hasGym { Capsule().fill(ClientClay.accent).frame(width: 9, height: 4) }
-                    if hasRun { Image(systemName: "triangle.fill").font(.system(size: 5)).foregroundStyle(ClientClay.runAccent) }
+                    if hasGym { Image(systemName: "dumbbell.fill") }
+                    if hasRun { Image(systemName: "figure.run") }
                 }
-                .frame(height: 6)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(hasActivity ? Color.white : ClientClay.secondaryInk)
+                .frame(height: 10)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(isSelected ? ClientClay.surfaceElevated : .clear, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .background(dayCellBackground(hasGym: hasGym, hasRun: hasRun, isSelected: isSelected), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(isToday ? ClientClay.accent.opacity(0.75) : isSelected ? ClientClay.inkSoft.opacity(0.45) : .clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.white.opacity(0.9) : isToday ? ClientClay.accentSoft : .clear, lineWidth: isSelected ? 2 : 1.5)
             }
             .contentShape(Rectangle())
         }
@@ -124,6 +127,16 @@ struct ClientActivityDashboardView: View {
         .accessibilityLabel(accessibilityLabel(for: date, items: items, isToday: isToday))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .accessibilityHint(isInMonth ? "Mostra il dettaglio del giorno" : "")
+    }
+
+    private func dayCellBackground(hasGym: Bool, hasRun: Bool, isSelected: Bool) -> AnyShapeStyle {
+        if hasGym && hasRun {
+            return AnyShapeStyle(LinearGradient(colors: [ClientClay.accent, ClientClay.runAccent], startPoint: .topLeading, endPoint: .bottomTrailing))
+        }
+        if hasGym { return AnyShapeStyle(ClientClay.accent.opacity(0.82)) }
+        if hasRun { return AnyShapeStyle(ClientClay.runAccent.opacity(0.82)) }
+        if isSelected { return AnyShapeStyle(ClientClay.surfaceElevated) }
+        return AnyShapeStyle(Color.clear)
     }
 
     private var selectedDayCard: some View {
@@ -175,7 +188,6 @@ struct ClientActivityDashboardView: View {
                 summaryTile("Palestra", value: "\(monthSummary.gymSessions)", symbol: "dumbbell.fill", tint: ClientClay.accent)
                 summaryTile("Corse", value: "\(monthSummary.runs)", symbol: "figure.run", tint: ClientClay.runAccent)
                 summaryTile("Km corsi", value: monthSummary.runningDistanceKm > 0 ? monthSummary.runningDistanceKm.formatted(.number.precision(.fractionLength(1))) : "—", symbol: "road.lanes", tint: ClientClay.runAccent)
-                summaryTile("Tempo attivo", value: ClientActivityFormat.compactDuration(monthSummary.activeSeconds), symbol: "timer", tint: ClientClay.sage)
                 summaryTile("Giorni attivi", value: "\(monthSummary.activeDays)", symbol: "calendar.badge.checkmark", tint: ClientClay.sage)
                 summaryTile("PB ottenuti", value: "\(monthSummary.personalBests)", symbol: "trophy.fill", tint: ClientClay.gold)
             }
@@ -234,8 +246,11 @@ struct ClientActivityRecapView: View {
             if buckets.isEmpty {
                 ClientEmptyState(symbol: "chart.bar.xaxis", title: "Nessuna attività nel periodo", message: "Completa una sessione in palestra o una corsa per vedere il riepilogo.")
             } else {
-                activeTimeChart
-                distanceChart
+                if buckets.contains(where: { $0.runningKm > 0 }) {
+                    distanceChart
+                } else {
+                    ClientEmptyState(symbol: "figure.run", title: "Nessuna distanza registrata", message: "Il grafico mostra solo chilometri GPS reali delle corse completate.")
+                }
             }
         }
     }
@@ -283,54 +298,29 @@ struct ClientActivityRecapView: View {
         }
     }
 
-    private var activeTimeChart: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ClientSectionHeader(title: "Tempo attivo", detail: "minuti", symbol: "chart.bar.fill")
-            Chart {
-                ForEach(buckets) { bucket in
-                    BarMark(x: .value("Periodo", bucket.label), y: .value("Palestra", bucket.gymMinutes))
-                        .foregroundStyle(ClientClay.accent)
-                    BarMark(x: .value("Periodo", bucket.label), y: .value("Corsa", bucket.runningMinutes))
-                        .foregroundStyle(ClientClay.runAccent)
-                }
-            }
-            .chartLegend(.hidden).frame(height: 180)
-            .chartPlotStyle { $0.background(ClientClay.inset.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 12)) }
-            HStack { legend("Palestra", ClientClay.accent); legend("Corsa", ClientClay.runAccent) }
-        }
-        .clayCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Grafico del tempo attivo, palestra e corsa")
-    }
-
     private var distanceChart: some View {
-        let hasRuns = buckets.contains { $0.runningKm > 0 }
-        return VStack(alignment: .leading, spacing: 12) {
-            ClientSectionHeader(title: hasRuns ? "Chilometri corsi" : "Durata palestra", detail: hasRuns ? "km" : "minuti", symbol: "chart.xyaxis.line")
+        VStack(alignment: .leading, spacing: 12) {
+            ClientSectionHeader(title: "Chilometri corsi", detail: "km per periodo", symbol: "chart.xyaxis.line")
             Chart(buckets) { bucket in
                 LineMark(
                     x: .value("Periodo", bucket.label),
-                    y: .value(hasRuns ? "Km" : "Minuti", hasRuns ? bucket.runningKm : bucket.gymMinutes)
+                    y: .value("Chilometri", bucket.runningKm)
                 )
                 .interpolationMethod(.catmullRom)
-                .foregroundStyle(hasRuns ? ClientClay.runAccent : ClientClay.accent)
+                .foregroundStyle(ClientClay.runAccent)
                 PointMark(
                     x: .value("Periodo", bucket.label),
-                    y: .value(hasRuns ? "Km" : "Minuti", hasRuns ? bucket.runningKm : bucket.gymMinutes)
+                    y: .value("Chilometri", bucket.runningKm)
                 )
-                .foregroundStyle(hasRuns ? ClientClay.runAccent : ClientClay.accent)
+                .foregroundStyle(ClientClay.runAccent)
             }
             .frame(height: 170)
+            .chartYAxisLabel("km")
             .chartPlotStyle { $0.background(ClientClay.inset.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 12)) }
         }
         .clayCard()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(hasRuns ? "Grafico dei chilometri corsi" : "Grafico della durata degli allenamenti in palestra")
-    }
-
-    private func legend(_ text: String, _ color: Color) -> some View {
-        HStack(spacing: 5) { Circle().fill(color).frame(width: 7, height: 7); Text(text) }
-            .font(.caption2).foregroundStyle(ClientClay.secondaryInk)
+        .accessibilityLabel("Grafico dei chilometri corsi nel periodo selezionato")
     }
 }
 

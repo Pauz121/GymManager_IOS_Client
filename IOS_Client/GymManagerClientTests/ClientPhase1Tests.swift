@@ -374,6 +374,52 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertTrue(days.allSatisfy { $0.caloriesKcal != nil })
     }
 
+    func testExerciseLoadHistoryUsesBestPositiveCompletedLoadPerSession() {
+        let exerciseID = UUID()
+        let firstDate = Date(timeIntervalSince1970: 1_757_721_600)
+        func execution(date: Date, loads: [(Double?, Bool)]) -> ClientWorkoutExecution {
+            let sets = loads.enumerated().map { index, item in
+                ClientSetLog(
+                    id: UUID(), number: index + 1, prescribedRepetitions: "8", prescribedLoadKg: 70,
+                    actualRepetitions: 8, actualLoadKg: item.0,
+                    completedAt: item.1 ? date.addingTimeInterval(Double(index + 1) * 60) : nil
+                )
+            }
+            return ClientWorkoutExecution(
+                id: UUID(), planID: UUID(), sessionID: UUID(), dayKey: ClientDayKey.string(for: date),
+                startedAt: date, completedAt: date.addingTimeInterval(600),
+                exercises: [ClientExerciseLog(id: UUID(), exerciseID: exerciseID, note: "", sets: sets)], feedback: nil
+            )
+        }
+        let state = ClientActivityState(
+            workouts: [
+                execution(date: firstDate, loads: [(70, true), (75, true), (90, false)]),
+                execution(date: firstDate.addingTimeInterval(86_400), loads: [(0, true), (80, true)])
+            ],
+            meals: [], restTimer: nil, activeRun: nil, runningResults: []
+        )
+        let points = ClientActivityInsights.exerciseLoadHistory(exerciseID: exerciseID, state: state)
+        XCTAssertEqual(points.map(\.loadKg), [75, 80])
+        XCTAssertLessThan(points[0].date, points[1].date)
+    }
+
+    func testTrainerDemoPopulatesHistoricalPlansAndPerformanceData() {
+        let snapshot = ClientDemoData.snapshot(for: .trainerConnected)
+        let activity = ClientDemoData.activity(for: .trainerConnected)
+        XCTAssertEqual(snapshot.workoutHistory?.count, 2)
+        XCTAssertEqual(activity.workouts.count, 4)
+        XCTAssertEqual(activity.runningResults.count, 6)
+        XCTAssertEqual(activity.meals.count, 2)
+        XCTAssertEqual(ClientRunningAchievements.leaderboard(results: activity.runningResults, target: .tenKilometers).count, 3)
+
+        let grouped = Dictionary(grouping: ClientActivityInsights.items(state: activity, snapshot: snapshot)) {
+            ClientDayKey.string(for: $0.completedAt)
+        }
+        XCTAssertTrue(grouped.values.contains { items in
+            items.contains(where: { $0.kind == .gym }) && items.contains(where: { $0.kind == .running })
+        })
+    }
+
     private func route(distanceMeters: Double, duration: TimeInterval) -> [ClientRoutePoint] {
         let start = Date(timeIntervalSince1970: 1_757_721_600)
         return [

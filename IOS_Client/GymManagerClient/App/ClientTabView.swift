@@ -50,7 +50,7 @@ private struct ClientPremiumTabBar: View {
 
     private let tabs: [(ClientTab, String, String)] = [
         (.today, "Oggi", "sun.max.fill"),
-        (.workout, "Scheda", "dumbbell.fill"),
+        (.workout, "Allenamento", "dumbbell.fill"),
         (.nutrition, "Nutrizione", "leaf.fill"),
         (.progress, "Progressi", "chart.xyaxis.line"),
         (.space, "Spazio", "person.crop.circle.fill")

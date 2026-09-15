@@ -43,6 +43,12 @@ struct ClientActivityTrendBucket: Identifiable, Equatable, Sendable {
     let runningKm: Double
 }
 
+struct ClientExerciseLoadPoint: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let date: Date
+    let loadKg: Double
+}
+
 enum ClientActivityPeriod: Int, CaseIterable, Identifiable, Hashable, Sendable {
     case month = 1
     case threeMonths = 3
@@ -61,6 +67,21 @@ enum ClientActivityPeriod: Int, CaseIterable, Identifiable, Hashable, Sendable {
 }
 
 enum ClientActivityInsights {
+    static func exerciseLoadHistory(exerciseID: UUID, state: ClientActivityState) -> [ClientExerciseLoadPoint] {
+        state.workouts.compactMap { execution in
+            guard let log = execution.exercises.first(where: { $0.exerciseID == exerciseID }),
+                  let bestLoad = log.sets.compactMap({ $0.isCompleted ? $0.actualLoadKg : nil }).filter({ $0 > 0 }).max() else {
+                return nil
+            }
+            return ClientExerciseLoadPoint(
+                id: log.id,
+                date: execution.completedAt ?? execution.startedAt,
+                loadKg: bestLoad
+            )
+        }
+        .sorted { $0.date < $1.date }
+    }
+
     static func items(state: ClientActivityState, snapshot: ClientSnapshot) -> [ClientActivityItem] {
         let gymItems = state.workouts.compactMap { execution -> ClientActivityItem? in
             guard let completedAt = execution.completedAt else { return nil }

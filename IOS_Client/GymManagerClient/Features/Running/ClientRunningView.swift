@@ -23,15 +23,7 @@ struct ClientRunningView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("CORSA ASSEGNATA").font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
-                Text(plan.title).font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(.white)
-                Text(plan.detail).font(.body).foregroundStyle(.white.opacity(0.68))
-                HStack(spacing: 18) {
-                    if let minutes = plan.targetMinutes { metric("Durata", value: "\(minutes) min", symbol: "timer") }
-                    if let distance = plan.targetDistanceKm { metric("Distanza", value: "\(distance.formatted()) km", symbol: "location") }
-                }
-                Label("Percorso e Live Activity restano visibili anche con schermo bloccato. iOS mostra l’indicatore di posizione durante la corsa.", systemImage: "lock.iphone")
-                    .font(.caption).foregroundStyle(.white.opacity(0.66))
+                Text("CORSA").font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
                 Button {
                     if activeRun == nil {
                         session.beginRun(plan)
@@ -43,6 +35,16 @@ struct ClientRunningView: View {
                 }
                 .buttonStyle(ClayPrimaryButtonStyle())
                 .accessibilityHint("Apre il rilevamento GPS della corsa")
+
+                Divider().overlay(.white.opacity(0.14))
+                Text(plan.title).font(.headline.weight(.bold)).foregroundStyle(.white)
+                Text(plan.detail).font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                HStack(spacing: 18) {
+                    if let minutes = plan.targetMinutes { metric("Durata", value: "\(minutes) min", symbol: "timer") }
+                    if let distance = plan.targetDistanceKm { metric("Distanza", value: "\(distance.formatted()) km", symbol: "location") }
+                }
+                Label("Percorso e Live Activity restano visibili anche con schermo bloccato.", systemImage: "lock.iphone")
+                    .font(.caption).foregroundStyle(.white.opacity(0.66))
             }
             .premiumCard(tint: ClientClay.accent)
 

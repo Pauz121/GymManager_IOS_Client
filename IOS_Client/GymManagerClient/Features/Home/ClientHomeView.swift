@@ -7,6 +7,7 @@ struct ClientHomeView: View {
     @Binding var selectedTab: ClientTab
     @EnvironmentObject private var session: ClientSessionStore
     @EnvironmentObject private var healthKit: HealthKitStepService
+    @EnvironmentObject private var avatarStore: ClientAvatarStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var presentedWorkout: ClientWorkoutSession?
 
@@ -87,20 +88,38 @@ struct ClientHomeView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("OGGI · \(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))")
-                .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(ClientClay.secondaryInk)
-            Text("Ciao, \(identity.firstName) 👋")
-                .font(.system(.largeTitle, design: .rounded, weight: .heavy))
-                .foregroundStyle(ClientClay.ink)
-            ClientBadge(
-                text: identity.mode == .trainerConnected ? "Con Trainer" : "Percorso autonomo",
-                tint: identity.mode == .trainerConnected ? ClientClay.sage : ClientClay.warning,
-                symbol: identity.mode == .trainerConnected ? "person.2.fill" : "figure.walk"
-            )
+        HStack(spacing: 13) {
+            NavigationLink {
+                ClientAccountView(identity: identity, source: source)
+            } label: {
+                ClientProfileAvatar(
+                    image: avatarStore.image(for: identity.authUserID),
+                    initials: initials,
+                    size: 52
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Apri l’account di \(identity.firstName)")
+            .accessibilityHint("Mostra profilo, foto e sicurezza")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("OGGI")
+                    .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(ClientClay.accent)
+                Text("Ciao, \(identity.firstName)")
+                    .font(.system(.title2, design: .rounded, weight: .heavy))
+                    .foregroundStyle(ClientClay.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            }
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+    }
+
+    private var initials: String {
+        "\(identity.firstName.first.map(String.init) ?? "")\(identity.lastName.first.map(String.init) ?? "")"
     }
 
     private var dayStatusHeadline: String {

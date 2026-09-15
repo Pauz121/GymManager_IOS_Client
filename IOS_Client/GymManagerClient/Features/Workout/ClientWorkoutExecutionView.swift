@@ -91,12 +91,13 @@ struct ClientWorkoutExecutionView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let completed = execution?.completedExerciseCount ?? 0
+
+        return VStack(alignment: .leading, spacing: 10) {
             Text("SESSIONE ATTIVA").font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.64))
             Text(plan.title).font(.title2.weight(.heavy)).foregroundStyle(.white)
             Text("Settimana \(plan.currentWeek) · \(workoutSession.name)")
                 .font(.subheadline).foregroundStyle(.white.opacity(0.68))
-            let completed = execution?.completedExerciseCount ?? 0
             ClientProgressSegmentBar(completed: completed, total: workoutSession.exercises.count, tint: ClientClay.sage)
             Text("\(completed) / \(workoutSession.exercises.count) esercizi completati")
                 .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.72))

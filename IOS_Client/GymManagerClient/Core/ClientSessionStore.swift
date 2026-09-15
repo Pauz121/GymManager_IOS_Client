@@ -105,6 +105,17 @@ final class ClientSessionStore: ObservableObject {
         let snapshot = ClientDemoData.snapshot(for: persona)
         agenda = agendaStore.load(userID: identity.authUserID, source: .demo)
         activity = activityStore.load(userID: identity.authUserID, source: .demo)
+        if agenda.isEmpty {
+            agenda = ClientDemoData.agenda(for: persona)
+            try? agendaStore.save(agenda, userID: identity.authUserID, source: .demo)
+        }
+        if activity.workouts.isEmpty,
+           activity.meals.isEmpty,
+           activity.runningResults.isEmpty,
+           activity.activeRun == nil {
+            activity = ClientDemoData.activity(for: persona)
+            try? activityStore.save(activity, userID: identity.authUserID, source: .demo)
+        }
         state = .active(identity: identity, snapshot: snapshot, source: .demo)
     }
     #endif

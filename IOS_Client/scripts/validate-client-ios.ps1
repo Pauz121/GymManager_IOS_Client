@@ -83,6 +83,7 @@ Assert-Check ($repository -match '\.eq\("client_visible", value: true\)' -and $r
 $tabs = Get-Content -LiteralPath (Join-Path $sourceRoot 'App\ClientTabView.swift') -Raw
 Assert-Check (([regex]::Matches($tabs, '\.tag\(ClientTab\.')).Count -eq 5) 'TabView has exactly five primary destinations'
 Assert-Check ($tabs -match 'safeAreaInset' -and $tabs -match 'allowsHitTesting\(false\)') 'Demo badge respects safe area and does not intercept touches'
+Assert-Check ($tabs -match '\(\.workout, "Allenamento", "dumbbell\.fill"\)' -and $tabs -notmatch '\(\.workout, "Scheda"') 'Primary workout tab is named Allenamento'
 
 $requiredPages = @(
     'Features\Home\ClientHomeView.swift', 'Features\Workout\ClientWorkoutView.swift',
@@ -112,6 +113,7 @@ $activityModels = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientAc
 $activityInsights = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientActivityInsights.swift') -Raw
 $activityDashboard = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Workout\ClientActivityDashboardView.swift') -Raw
 Assert-Check ($homeSource -match 'Ciao, \\\(identity\.firstName\)' -and $homeSource -match 'Allenamento di oggi' -and $homeSource -match 'Nutrizione di oggi') 'Home is today-first and uses the authenticated Client name'
+Assert-Check ($homeSource -match 'ClientProfileAvatar' -and $homeSource -match 'ClientAccountView\(identity: identity, source: source\)' -and $homeSource -notmatch '👋') 'Home uses a real or fallback avatar linked to Account and no waving emoji'
 Assert-Check ($workoutExecution -match 'Completa serie' -and $workoutExecution -match 'ClientRestTimerBar' -and $workoutExecution -match 'Termina allenamento') 'Workout execution includes set completion, rest timer and final check'
 Assert-Check ($workoutExecution -match 'Fatica percepita' -and $workoutExecution -match 'Qualità allenamento' -and $workoutExecution -match 'Dolori o fastidi') 'Post-workout flow is limited to rapid feedback fields'
 Assert-Check ($swift -match 'toggleMealCompletion' -and $swift -match 'pasti completati') 'Daily meal completion and progress are implemented'
@@ -138,6 +140,7 @@ Assert-Check ($workoutBrowse -match 'selectedExercise' -and $workoutBrowse -matc
 Assert-Check ($progressSource -match 'kpiGrid' -and $progressSource -match 'weeklyWorkoutChart' -and $progressSource -match 'weightSection' -and $progressSource -match 'measurementsSection' -and $progressSource -match 'runningSection') 'Progress combines real KPIs and charts for weight, measures, workouts, steps and running'
 Assert-Check ($repository -match 'calories_kcal' -and $homeSource -match 'completedCalories' -and $homeSource -match '-- kcal') 'Nutrition calories use backend values and an honest unavailable fallback'
 Assert-Check ($nutrition -match 'ForEach\(plan\.days\)' -and $nutrition -match 'isCurrentDay' -and $nutrition -match 'Consultazione · sola lettura') 'Nutrition exposes every plan day and gates completion to today'
+Assert-Check ($nutrition.IndexOf('planHeader(plan)') -lt $nutrition.IndexOf('weekSelector(plan)') -and $nutrition.IndexOf('weekSelector(plan)') -lt $nutrition.IndexOf('currentDayHero(plan: plan, day: day)')) 'Nutrition shows plan and weekly selector before daily meals'
 Assert-Check ($account -match 'PhotosPicker' -and $tabsSource -match 'avatarStore\.image' -and $swift -match 'GymManagerClient/Avatars') 'Profile photo is local per account and appears in the Spazio tab'
 Assert-Check ($homeSource -match 'homeAgendaTasks' -and $homeSource -match 'toggleAgendaTask') 'Home shows and completes personal Agenda activities'
 Assert-Check ($locationSource -match 'allowsBackgroundLocationUpdates = true' -and $running -match 'ClientRunLiveActivityManager') 'Running continues location updates and publishes lock-screen metrics'
@@ -149,7 +152,10 @@ Assert-Check ($nutrition -match 'currentDayHero' -and $nutrition -match 'ScrollV
 Assert-Check ($progressSource -match 'recentWeightDelta' -and $progressSource -match 'ClientDirectionalBadge' -and $progressSource -match 'chartPlotStyle') 'Progress uses neutral recent deltas and integrated dark charts'
 Assert-Check ($progressSource -notmatch '(?i)body fat|massa magra|storico passi') 'Progress does not invent unavailable body composition or step history'
 Assert-Check ($workoutBrowse -match 'case activity = "Attività"' -and $workoutBrowse -match 'case gym = "Palestra"' -and $workoutBrowse -match 'case running = "Corsa"' -and $workoutBrowse -match 'case recap = "Riepilogo"' -and $workoutBrowse -match 'category: Category = \.activity') 'Training opens Activity first and preserves Gym, Running and Recap'
+Assert-Check ($workoutBrowse -match 'LazyVGrid' -and $workoutBrowse -notmatch 'Il tuo percorso' -and $workoutBrowse -match 'ClientWorkoutPlanDetailView' -and $workoutBrowse -match 'Storico schede') 'Training starts with category cards and exposes active and historical plans'
 Assert-Check ($activityDashboard -match '0\.\.<42' -and $activityDashboard -match 'Palestra' -and $activityDashboard -match 'Corsa' -and $activityDashboard -match 'Entrambi') 'Activity calendar uses a fixed compact month and non-color-only legend'
+Assert-Check ($activityDashboard -match 'dayCellBackground' -and $activityDashboard -match 'dumbbell\.fill' -and $activityDashboard -match 'figure\.run') 'Activity completion colors the full day cell and retains icon-based states'
+Assert-Check ($activityDashboard -notmatch 'summaryTile\("Tempo attivo"') 'Monthly Activity summary omits active time'
 Assert-Check ($activityInsights -match 'state\.workouts' -and $activityInsights -match 'state\.runningResults' -and $activityInsights -notmatch '(?i)calendar_table|activity_calendar') 'Activity calendar derives from real workout and running sessions without a duplicate calendar store'
 Assert-Check ($activityInsights -match 'gymSessions' -and $activityInsights -match 'runningDistanceKm' -and $activityInsights -match 'activeSeconds' -and $activityInsights -match 'activeDays' -and $activityInsights -match 'personalBests') 'Monthly and period summaries aggregate only supported activity metrics'
 Assert-Check ($activityModels -match 'elapsedSeconds: TimeInterval\?' -and $locationSource -match 'stabilizedUpdateInterval: TimeInterval = 25' -and $locationSource -match 'smoothingWindow: TimeInterval = 30') 'Running persists active sample time and stabilizes live speed on a 25-second cadence'
@@ -159,7 +165,11 @@ Assert-Check ($activityInsights -match 'case oneKilometer = 1_000' -and $activit
 Assert-Check ($activityInsights -match 'startOffsetMeters' -and $activityInsights -match 'interpolatedSample' -and $activityInsights -match 'start\.distance \+ Double\(target\.rawValue\)') 'Best-effort engine searches interpolated internal route windows'
 Assert-Check ($activityInsights -match 'func leaderboard' -and $activityInsights -match 'entries\.count < max\(0, limit\)' -and $activityInsights -match 'sessionID == candidate\.sessionID') 'Top 3 is sorted and deduplicated per running session'
 Assert-Check ($running -match 'ClientPersonalBestDetailView' -and $running -match 'Split automatici' -and $running -match 'NUOVI PERSONAL BEST') 'Running home and final summary expose Top 3, splits and multiple PB results'
-Assert-Check ($activityDashboard -match 'ClientActivityPeriod\.allCases' -and $activityDashboard -match 'BarMark' -and $activityDashboard -match 'LineMark') 'Recap supports month, 3, 6 and 12 months with at most two focused charts'
+Assert-Check ($running -notmatch 'CORSA ASSEGNATA' -and $running.IndexOf('Inizia corsa') -lt $running.IndexOf('Personal Best')) 'Running removes the assigned-run header and prioritizes its start CTA'
+Assert-Check ($activityDashboard -match 'ClientActivityPeriod\.allCases' -and $activityDashboard -match 'LineMark' -and $activityDashboard -notmatch 'BarMark' -and $activityDashboard -notmatch 'Durata palestra') 'Recap supports all periods with one running-distance chart in kilometers'
+Assert-Check ($workoutBrowse -match 'import Charts' -and $workoutBrowse -match 'Carico migliore per sessione' -and $activityInsights -match 'exerciseLoadHistory' -and $activityInsights -match 'actualLoadKg.*\.max\(\)') 'Exercise history charts the best real load recorded per session'
+Assert-Check ($demo -match 'workoutHistory: pastPlans' -and $demo -match 'static func activity' -and $demo -match '\(5, 10, 56\)' -and $demo -match '\(3, 10, 54\)' -and $demo -match '\(1, 10, 52\)') 'Trainer-connected demo includes past plans, activity and running PB data'
+Assert-Check ($workoutExecution -match '(?s)private var header: some View \{\s*let completed = .*?\s*return VStack' -and $workoutExecution -match '\.premiumCard\(tint: completed ==') 'Workout header keeps completed count in modifier scope'
 
 $tests = Get-Content -LiteralPath (Join-Path $clientRoot 'GymManagerClientTests\ClientPhase1Tests.swift') -Raw
 Assert-Check (([regex]::Matches($tests, '(?m)^\s*func test')).Count -ge 30) 'At least 30 native unit tests are defined'
