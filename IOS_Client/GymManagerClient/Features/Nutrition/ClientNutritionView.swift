@@ -3,6 +3,7 @@ import SwiftUI
 struct ClientNutritionView: View {
     let plan: ClientNutritionPlan?
     let identity: ClientIdentity
+    @EnvironmentObject private var session: ClientSessionStore
 
     private var currentWeekday: Int { ClientDateLogic.weekday(for: Date()) }
 
@@ -12,25 +13,39 @@ struct ClientNutritionView: View {
                 ClientPageTitle("Nutrizione", eyebrow: "Piano alimentare", subtitle: "Consulta tutti i giorni del piano. Solo la giornata corrente può essere spuntata.")
                 if let plan {
                     ReadOnlyPlanBadge()
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(plan.title).font(.system(.title2, design: .rounded, weight: .bold))
-                        Text("\(plan.days.count) giornate disponibili")
-                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    if let currentDay = plan.days.first(where: { $0.weekday == currentWeekday }) {
+                        NavigationLink {
+                            ClientNutritionDayDetailView(planTitle: plan.title, day: currentDay, isCurrentDay: true)
+                        } label: {
+                            currentDayHero(plan: plan, day: currentDay)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("PIANO ATTIVO").font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.62))
+                            Text(plan.title).font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                            Text("Oggi non è prevista una giornata specifica.").font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                        }
+                        .premiumCard(tint: ClientClay.sage)
                     }
-                    .clayCard()
 
                     if let notice = plan.detailNotice {
                         Label(notice, systemImage: "info.circle").font(.subheadline).clayCard()
                     }
 
-                    Text("Giorni del piano").font(.title3.weight(.bold))
-                    ForEach(plan.days) { day in
-                        NavigationLink {
-                            ClientNutritionDayDetailView(planTitle: plan.title, day: day, isCurrentDay: day.weekday == currentWeekday)
-                        } label: {
-                            dayRow(day)
+                    ClientSectionHeader(title: "Giorni del piano", detail: "\(plan.days.count) disponibili", symbol: "calendar")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(plan.days) { day in
+                                NavigationLink {
+                                    ClientNutritionDayDetailView(planTitle: plan.title, day: day, isCurrentDay: day.weekday == currentWeekday)
+                                } label: {
+                                    dayPill(day)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
                     }
                 } else {
                     ClientEmptyState(
@@ -40,31 +55,71 @@ struct ClientNutritionView: View {
                     )
                 }
             }
-            .padding(20)
+            .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage()
         .navigationTitle("Nutrizione")
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func dayRow(_ day: ClientNutritionDay) -> some View {
-        let isToday = day.weekday == currentWeekday
-        return HStack(spacing: 14) {
-            Image(systemName: isToday ? "sun.max.fill" : "calendar")
-                .font(.title2).foregroundStyle(isToday ? ClientClay.accent : ClientClay.secondaryInk)
-                .frame(width: 34)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(day.name).font(.headline).foregroundStyle(ClientClay.ink)
-                    if isToday { ClientBadge(text: "Oggi", tint: ClientClay.accent) }
+    private func currentDayHero(plan: ClientNutritionPlan, day: ClientNutritionDay) -> some View {
+        let completedMeals = day.meals.filter { session.activity.isMealCompleted($0.id) }
+        let completedCalories = completedMeals.compactMap(\.caloriesKcal).reduce(0, +)
+
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(plan.title.uppercased()).font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
+                    Text(day.name).font(.system(.largeTitle, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                    Text("OGGI · \(completedMeals.count) DI \(day.meals.count) PASTI")
+                        .font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(ClientClay.sage)
                 }
-                Text("\(day.meals.count) pasti · \(day.caloriesKcal.map { "\(Int($0.rounded())) kcal" } ?? "calorie non disponibili")")
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                Spacer()
+                Image(systemName: "leaf.fill").font(.title2).foregroundStyle(ClientClay.sage)
+                    .frame(width: 48, height: 48).background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             }
-            Spacer()
-            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.secondaryInk)
+            if let calories = day.caloriesKcal {
+                ViewThatFits {
+                    HStack(spacing: 18) {
+                        ClientCaloriePie(value: completedCalories, total: calories, valueText: "\(Int(completedCalories.rounded()))", detail: "di \(Int(calories.rounded())) kcal", size: 104)
+                        nutritionProgressCopy(completed: completedMeals.count, total: day.meals.count)
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        ClientCaloriePie(value: completedCalories, total: calories, valueText: "\(Int(completedCalories.rounded()))", detail: "di \(Int(calories.rounded())) kcal", size: 96)
+                        nutritionProgressCopy(completed: completedMeals.count, total: day.meals.count)
+                    }
+                }
+            } else {
+                nutritionProgressCopy(completed: completedMeals.count, total: day.meals.count)
+            }
+            Label("Apri la giornata", systemImage: "arrow.up.right")
+                .font(.subheadline.weight(.bold)).foregroundStyle(ClientClay.accentSoft)
         }
-        .clayCard(padding: 15)
+        .premiumCard(tint: ClientClay.sage)
+        .accessibilityHint("Apre i pasti della giornata corrente")
+    }
+
+    private func nutritionProgressCopy(completed: Int, total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(completed == total && total > 0 ? "Giornata completata" : "\(max(0, total - completed)) pasti da completare")
+                .font(.headline).foregroundStyle(.white)
+            ClientProgressSegmentBar(completed: completed, total: total, tint: ClientClay.sage)
+            Text("\(completed) / \(total) completati").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.66))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func dayPill(_ day: ClientNutritionDay) -> some View {
+        let isToday = day.weekday == currentWeekday
+        return VStack(spacing: 6) {
+            Text(String(day.name.prefix(3)).uppercased()).font(.caption.weight(.bold)).tracking(0.8)
+            Image(systemName: isToday ? "sun.max.fill" : "calendar").font(.title3)
+            Text("\(day.meals.count) pasti").font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(isToday ? .white : ClientClay.secondaryInk)
+        .frame(width: 92).frame(minHeight: 86)
+        .background(isToday ? ClientClay.accent : ClientClay.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isToday ? ClientClay.accentSoft.opacity(0.46) : ClientClay.border) }
         .accessibilityElement(children: .combine)
         .accessibilityHint(isToday ? "Apre la giornata corrente, modificabile" : "Apre la giornata in sola lettura")
     }
@@ -88,42 +143,59 @@ private struct ClientNutritionDayDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(planTitle).font(.caption.weight(.bold)).foregroundStyle(ClientClay.accent)
-                    Text(day.name).font(.system(.largeTitle, design: .rounded, weight: .bold))
-                    ClientBadge(
-                        text: isCurrentDay ? "Giornata corrente · puoi spuntare i pasti" : "Consultazione · sola lettura",
-                        tint: isCurrentDay ? ClientClay.sage : ClientClay.secondaryInk,
-                        symbol: isCurrentDay ? "checkmark.circle" : "lock.fill"
-                    )
-                }
-
-                HStack(spacing: 17) {
-                    ClientCaloriePie(
-                        value: day.caloriesKcal == nil ? 0 : completedCalories,
-                        total: day.caloriesKcal ?? 1,
-                        valueText: day.caloriesKcal.map { _ in "\(Int(completedCalories.rounded()))" } ?? "--",
-                        detail: day.caloriesKcal.map { "di \(Int($0.rounded())) kcal" } ?? "kcal non disponibili"
-                    )
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("Calorie della giornata").font(.headline)
-                        Text(day.caloriesKcal.map { "Totale \(Int($0.rounded())) kcal" } ?? "Il piano non contiene calorie complete.")
-                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                        if isCurrentDay {
-                            Text("\(completedMeals.count) / \(day.meals.count) pasti completati")
-                                .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.sage)
-                        }
-                    }
-                }
-                .clayCard()
+                dayHero
 
                 ForEach(day.meals) { meal in mealCard(meal) }
             }
-            .padding(20)
+            .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage()
         .navigationTitle(day.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var dayHero: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(planTitle.uppercased()).font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
+                    Text(day.name).font(.system(.largeTitle, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                    ClientBadge(
+                        text: isCurrentDay ? "Oggi · puoi spuntare i pasti" : "Consultazione · sola lettura",
+                        tint: isCurrentDay ? ClientClay.sage : ClientClay.inkSoft,
+                        symbol: isCurrentDay ? "checkmark.circle" : "lock.fill"
+                    )
+                }
+                Spacer()
+                Image(systemName: isCurrentDay ? "leaf.fill" : "eye.fill").font(.title2).foregroundStyle(isCurrentDay ? ClientClay.sage : ClientClay.accentSoft)
+            }
+            if let calories = day.caloriesKcal {
+                ViewThatFits {
+                    HStack(spacing: 18) {
+                        ClientCaloriePie(value: completedCalories, total: calories, valueText: "\(Int(completedCalories.rounded()))", detail: "di \(Int(calories.rounded())) kcal")
+                        dayProgressCopy
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        ClientCaloriePie(value: completedCalories, total: calories, valueText: "\(Int(completedCalories.rounded()))", detail: "di \(Int(calories.rounded())) kcal", size: 96)
+                        dayProgressCopy
+                    }
+                }
+            } else {
+                dayProgressCopy
+            }
+        }
+        .premiumCard(tint: isCurrentDay ? ClientClay.sage : ClientClay.accent)
+    }
+
+    private var dayProgressCopy: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(day.caloriesKcal.map { "Totale \(Int($0.rounded())) kcal" } ?? "Calorie non disponibili")
+                .font(.headline).foregroundStyle(.white)
+            ClientProgressSegmentBar(completed: completedMeals.count, total: day.meals.count, tint: ClientClay.sage)
+            Text(isCurrentDay ? "\(completedMeals.count) / \(day.meals.count) pasti completati" : "\(day.meals.count) pasti in sola lettura")
+                .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.68))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func mealCard(_ meal: ClientMeal) -> some View {
@@ -144,26 +216,32 @@ private struct ClientNutritionDayDetailView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(meal.name).font(.title3.weight(.semibold)).foregroundStyle(ClientClay.ink)
-                    Text(meal.caloriesKcal.map { "\(Int($0.rounded())) kcal" } ?? "Calorie non disponibili")
+                    Text(meal.caloriesKcal.map { "\(Int($0.rounded())) kcal" } ?? "\(meal.foods.count) alimenti")
                         .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
                 }
                 Spacer()
             }
-            Divider().opacity(0.45)
+            Divider().overlay(ClientClay.border)
             ForEach(meal.foods) { food in
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(food.name)
+                    Text(food.name).foregroundStyle(ClientClay.ink)
+                    Spacer(minLength: 12)
+                    VStack(alignment: .trailing, spacing: 2) {
                         Text(food.quantity.map { "\($0.formatted()) \(food.unit)" } ?? food.unit)
-                            .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.inkSoft)
+                        if let calories = food.caloriesKcal {
+                            Text("\(Int(calories.rounded())) kcal").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        }
                     }
-                    Spacer()
-                    Text(food.caloriesKcal.map { "\(Int($0.rounded())) kcal" } ?? "-- kcal")
-                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
                 }
-                if food.id != meal.foods.last?.id { Divider().opacity(0.3) }
+                if food.id != meal.foods.last?.id { Divider().overlay(ClientClay.border) }
             }
         }
         .clayCard()
+        .overlay {
+            RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
+                .stroke(completed ? ClientClay.sage.opacity(0.38) : ClientClay.border, lineWidth: 1)
+        }
+        .opacity(completed ? 0.90 : 1)
     }
 }

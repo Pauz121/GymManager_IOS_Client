@@ -76,8 +76,8 @@ struct ClientProfileAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.white.opacity(0.8), lineWidth: 2))
-        .shadow(color: ClientClay.ink.opacity(0.12), radius: 6, y: 3)
+        .overlay(Circle().stroke(.white.opacity(0.28), lineWidth: 2))
+        .shadow(color: .black.opacity(0.34), radius: 7, y: 4)
         .accessibilityLabel(image == nil ? "Foto profilo non impostata" : "Foto profilo")
     }
 }

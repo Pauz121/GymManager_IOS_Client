@@ -30,7 +30,7 @@ struct ClientRootView: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(.dark)
         .alert("GymManager", isPresented: Binding(
             get: { session.notice != nil },
             set: { if !$0 { session.notice = nil } }

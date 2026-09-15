@@ -13,6 +13,7 @@ struct ClientRunningView: View {
     @EnvironmentObject private var location: RunningLocationService
     @State private var showingRunner = false
     @State private var selectedResult: ClientRunningResult?
+    @State private var selectedTarget: ClientRunningTarget?
 
     private var activeRun: ClientRunningExecution? {
         guard session.activity.activeRun?.planID == plan.id else { return nil }
@@ -22,15 +23,15 @@ struct ClientRunningView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 14) {
-                ClientBadge(text: "Corsa assegnata", tint: ClientClay.accent, symbol: "figure.run")
-                Text(plan.title).font(.system(.title2, design: .rounded, weight: .bold))
-                Text(plan.detail).font(.body).foregroundStyle(ClientClay.secondaryInk)
+                Text("CORSA ASSEGNATA").font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
+                Text(plan.title).font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                Text(plan.detail).font(.body).foregroundStyle(.white.opacity(0.68))
                 HStack(spacing: 18) {
                     if let minutes = plan.targetMinutes { metric("Durata", value: "\(minutes) min", symbol: "timer") }
                     if let distance = plan.targetDistanceKm { metric("Distanza", value: "\(distance.formatted()) km", symbol: "location") }
                 }
                 Label("Percorso e Live Activity restano visibili anche con schermo bloccato. iOS mostra l’indicatore di posizione durante la corsa.", systemImage: "lock.iphone")
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                    .font(.caption).foregroundStyle(.white.opacity(0.66))
                 Button {
                     if activeRun == nil {
                         session.beginRun(plan)
@@ -43,7 +44,9 @@ struct ClientRunningView: View {
                 .buttonStyle(ClayPrimaryButtonStyle())
                 .accessibilityHint("Apre il rilevamento GPS della corsa")
             }
-            .clayCard()
+            .premiumCard(tint: ClientClay.accent)
+
+            personalBestSection
 
             if !results.isEmpty {
                 Text("Le tue corse").font(.title3.weight(.bold))
@@ -60,12 +63,45 @@ struct ClientRunningView: View {
         .fullScreenCover(item: $selectedResult) { result in
             ClientRunningCompletionView(result: result) { selectedResult = nil }
         }
+        .sheet(item: $selectedTarget) { target in
+            ClientPersonalBestDetailView(target: target, results: results)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private var results: [ClientRunningResult] {
-        session.activity.runningResults
-            .filter { $0.planID == plan.id }
-            .sorted { $0.completedAt > $1.completedAt }
+        session.activity.runningResults.sorted { $0.completedAt > $1.completedAt }
+    }
+
+    private var personalBestSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ClientSectionHeader(title: "Personal Best", detail: "Top 3 per distanza", symbol: "trophy.fill")
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(ClientRunningTarget.allCases) { target in
+                    let top = ClientRunningAchievements.leaderboard(results: results, target: target)
+                    Button { selectedTarget = target } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(target.title).font(.caption.weight(.bold)).tracking(0.8)
+                                Spacer()
+                                Image(systemName: top.isEmpty ? "circle.dashed" : "trophy.fill")
+                            }
+                            .foregroundStyle(top.isEmpty ? ClientClay.secondaryInk : ClientClay.gold)
+                            Text(top.first.map { ClientRunningFormat.effortDuration($0.effort.durationSeconds) } ?? "--:--")
+                                .font(.system(.title2, design: .rounded, weight: .heavy).monospacedDigit())
+                                .foregroundStyle(ClientClay.ink)
+                            Text(top.first.map { $0.completedAt.formatted(date: .abbreviated, time: .omitted) } ?? "Nessun tempo")
+                                .font(.caption2).foregroundStyle(ClientClay.secondaryInk).lineLimit(1)
+                        }
+                        .clayCard(padding: 13)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(top.isEmpty)
+                    .accessibilityHint(top.isEmpty ? "Completa questa distanza per registrare un tempo" : "Apre la Top 3")
+                }
+            }
+        }
     }
 
     private func historyRow(_ result: ClientRunningResult) -> some View {
@@ -75,6 +111,15 @@ struct ClientRunningView: View {
                 Text(result.completedAt.formatted(date: .abbreviated, time: .shortened)).font(.headline).foregroundStyle(ClientClay.ink)
                 Text(result.distanceKm.map { "\($0.formatted(.number.precision(.fractionLength(2)))) km" } ?? "Percorso GPS non disponibile")
                     .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                if let pace = result.averagePaceMinutesPerKm, let speed = result.averageSpeedKmh {
+                    Text("\(ClientRunningFormat.pace(pace)) · \(speed.formatted(.number.precision(.fractionLength(1)))) km/h")
+                        .font(.caption.monospacedDigit()).foregroundStyle(ClientClay.inkSoft)
+                }
+                let records = ClientRunningAchievements.recordAchievements(results: results).filter { $0.sessionID == result.id }
+                if !records.isEmpty {
+                    Text(records.map { "PB \($0.target.title)" }.joined(separator: " · "))
+                        .font(.caption2.weight(.bold)).foregroundStyle(ClientClay.gold)
+                }
             }
             Spacer()
             Text(ClientRunningFormat.duration(result.durationSeconds)).font(.subheadline.monospacedDigit().weight(.semibold)).foregroundStyle(ClientClay.ink)
@@ -102,6 +147,8 @@ private struct ClientRunningExecutionView: View {
     @State private var camera: MapCameraPosition = .automatic
     @State private var metricMode: RunningMetricMode = .pace
     @State private var completedResult: ClientRunningResult?
+    @State private var lastSplitCount = 0
+    @State private var splitToast: ClientRunningSplit?
 
     private var activeRun: ClientRunningExecution? {
         guard session.activity.activeRun?.planID == plan.id else { return nil }
@@ -119,8 +166,9 @@ private struct ClientRunningExecutionView: View {
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             if let run = activeRun {
+                lastSplitCount = ClientRunningAchievements.splits(for: run.route).count
                 if run.isPaused { location.pauseTracking() }
-                else { location.resumeRun(route: run.route, maximumSpeedMetersPerSecond: run.maximumSpeedMetersPerSecond) }
+                else { location.resumeRun(route: run.route, maximumSpeedMetersPerSecond: run.maximumSpeedMetersPerSecond, elapsedSeconds: run.elapsedSeconds()) }
                 Task {
                     await liveActivity.start(planTitle: plan.title, elapsedSeconds: run.elapsedSeconds())
                     await updateLiveActivity(force: true)
@@ -159,11 +207,19 @@ private struct ClientRunningExecutionView: View {
             .ignoresSafeArea()
 
             locationBanner
+            if let splitToast {
+                ClientRunSplitToast(split: splitToast)
+                    .padding(.horizontal, 14)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { controlDock }
         .onChange(of: location.route) { _, route in
             session.updateRunRoute(route, maximumSpeedMetersPerSecond: location.maximumSpeedMetersPerSecond, persist: route.count.isMultiple(of: 5))
             Task { await updateLiveActivity() }
+            handleCompletedSplit(in: route)
             if let coordinate = route.last?.coordinate {
                 withAnimation(.easeOut(duration: 0.35)) {
                     camera = .camera(MapCamera(centerCoordinate: coordinate, distance: 650, heading: 0, pitch: 25))
@@ -195,7 +251,8 @@ private struct ClientRunningExecutionView: View {
             .font(.footnote.weight(.semibold))
             .foregroundStyle(ClientClay.ink)
             .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .background(ClientClay.surfaceElevated.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+            .overlay { RoundedRectangle(cornerRadius: 14).stroke(ClientClay.border) }
             .padding(.horizontal, 14)
             .padding(.top, 8)
     }
@@ -203,16 +260,26 @@ private struct ClientRunningExecutionView: View {
     private var controlDock: some View {
         VStack(spacing: 13) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                HStack(spacing: 10) {
-                    liveMetric(title: "Tempo", value: ClientRunningFormat.duration(activeRun?.elapsedSeconds(at: context.date) ?? 0), symbol: "timer")
-                    liveMetric(title: "Distanza", value: "\(location.distanceKm.formatted(.number.precision(.fractionLength(2)))) km", symbol: "point.topleft.down.to.point.bottomright.curvepath")
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        liveMetric(title: "Tempo", value: ClientRunningFormat.duration(activeRun?.elapsedSeconds(at: context.date) ?? 0), symbol: "timer", prominence: true)
+                        liveMetric(title: "Distanza", value: "\(location.distanceKm.formatted(.number.precision(.fractionLength(2)))) km", symbol: "point.topleft.down.to.point.bottomright.curvepath", prominence: true)
+                    }
+                    HStack(spacing: 10) {
+                        liveMetric(title: "Ritmo attuale · 25s", value: currentPace, symbol: "metronome")
+                        liveMetric(title: "Velocità attuale · 25s", value: currentSpeed, symbol: "speedometer")
+                    }
+                    HStack(spacing: 10) {
+                        liveMetric(title: "Ritmo medio", value: averagePace(at: context.date), symbol: "gauge.with.needle")
+                        liveMetric(title: "Velocità media", value: averageSpeed(at: context.date), symbol: "speedometer")
+                    }
                 }
             }
-            selectedLiveMetric
-            Picker("Metrica in tempo reale", selection: $metricMode) {
+            Picker("Metrica sul blocco schermo", selection: $metricMode) {
                 ForEach(RunningMetricMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            .tint(ClientClay.accent)
             .onChange(of: metricMode) { _, _ in
                 ClientHaptics.selection()
                 Task { await updateLiveActivity(force: true) }
@@ -222,7 +289,7 @@ private struct ClientRunningExecutionView: View {
                 Button {
                     if activeRun?.isPaused == true {
                         session.toggleRunPause()
-                        if let run = activeRun { location.resumeRun(route: run.route, maximumSpeedMetersPerSecond: run.maximumSpeedMetersPerSecond) }
+                        if let run = activeRun { location.resumeRun(route: run.route, maximumSpeedMetersPerSecond: run.maximumSpeedMetersPerSecond, elapsedSeconds: run.elapsedSeconds()) }
                     } else {
                         session.toggleRunPause()
                         location.pauseTracking()
@@ -236,29 +303,51 @@ private struct ClientRunningExecutionView: View {
             }
         }
         .padding(16)
-        .background(.ultraThinMaterial)
+        .background(ClientClay.canvas.opacity(0.97))
     }
 
-    private var selectedLiveMetric: some View {
-        let speed = location.currentSpeedMetersPerSecond
-        let value: String
-        switch metricMode {
-        case .speed:
-            value = speed.map { "\(($0 * 3.6).formatted(.number.precision(.fractionLength(1)))) km/h" } ?? "-- km/h"
-        case .pace:
-            value = ClientRunningFormat.pace(speedMetersPerSecond: speed)
-        }
-        return liveMetric(title: metricMode == .speed ? "Velocità" : "Ritmo", value: value, symbol: metricMode == .speed ? "speedometer" : "metronome")
+    private var currentPace: String {
+        if activeRun?.isPaused == true { return "In pausa" }
+        return ClientRunningFormat.pace(speedMetersPerSecond: location.stabilizedSpeedMetersPerSecond)
     }
 
-    private func liveMetric(title: String, value: String, symbol: String) -> some View {
+    private var currentSpeed: String {
+        if activeRun?.isPaused == true { return "0.0 km/h" }
+        return location.stabilizedSpeedMetersPerSecond.map { "\(($0 * 3.6).formatted(.number.precision(.fractionLength(1)))) km/h" } ?? "-- km/h"
+    }
+
+    private func averagePace(at date: Date) -> String {
+        guard let elapsed = activeRun?.elapsedSeconds(at: date), location.distanceKm > 0.02 else { return "--'--\" /km" }
+        return ClientRunningFormat.pace(elapsed / 60 / location.distanceKm)
+    }
+
+    private func averageSpeed(at date: Date) -> String {
+        guard let elapsed = activeRun?.elapsedSeconds(at: date), elapsed > 0, location.distanceKm > 0 else { return "-- km/h" }
+        return "\((location.distanceKm / (elapsed / 3_600)).formatted(.number.precision(.fractionLength(1)))) km/h"
+    }
+
+    private func liveMetric(title: String, value: String, symbol: String, prominence: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Label(title, systemImage: symbol).font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            Text(value).font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
+            Text(value).font(.system(prominence ? .title2 : .headline, design: .rounded, weight: .bold).monospacedDigit())
                 .minimumScaleFactor(0.7).lineLimit(1).foregroundStyle(ClientClay.ink)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(ClientClay.surface, in: RoundedRectangle(cornerRadius: 15))
+        .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 15))
+        .overlay { RoundedRectangle(cornerRadius: 15).stroke(ClientClay.border) }
+    }
+
+    private func handleCompletedSplit(in route: [ClientRoutePoint]) {
+        let splits = ClientRunningAchievements.splits(for: route)
+        guard splits.count > lastSplitCount, let latest = splits.last else { return }
+        lastSplitCount = splits.count
+        ClientHaptics.completedSet()
+        withAnimation(.snappy(duration: 0.28)) { splitToast = latest }
+        Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard splitToast?.index == latest.index else { return }
+            withAnimation(.easeOut(duration: 0.2)) { splitToast = nil }
+        }
     }
 
     private func finishRun() {
@@ -293,7 +382,7 @@ private struct HoldToFinishButton: View {
         Label("Tieni premuto", systemImage: "stop.fill")
             .font(.headline).foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 50)
-            .background(ClientClay.accent, in: RoundedRectangle(cornerRadius: 16))
+            .background(ClientClay.brandGradient, in: RoundedRectangle(cornerRadius: 16))
             .overlay(alignment: .bottomLeading) {
                 GeometryReader { proxy in
                     Capsule().fill(.white.opacity(0.8))
@@ -314,9 +403,36 @@ private struct HoldToFinishButton: View {
     }
 }
 
+private struct ClientRunSplitToast: View {
+    let split: ClientRunningSplit
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(split.index)")
+                .font(.headline.monospacedDigit()).foregroundStyle(.white)
+                .frame(width: 36, height: 36).background(ClientClay.runAccent, in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CHILOMETRO \(split.index) COMPLETATO").font(.caption.weight(.bold)).tracking(0.7)
+                Text(ClientRunningFormat.effortDuration(split.durationSeconds))
+                    .font(.title3.monospacedDigit().weight(.heavy))
+            }
+            Spacer()
+            Text(ClientRunningFormat.pace(split.averagePaceMinutesPerKm))
+                .font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(ClientClay.inkSoft)
+        }
+        .padding(12)
+        .background(ClientClay.surfaceElevated.opacity(0.97), in: RoundedRectangle(cornerRadius: 17))
+        .overlay { RoundedRectangle(cornerRadius: 17).stroke(ClientClay.runAccent.opacity(0.55)) }
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Chilometro \(split.index) completato in \(ClientRunningFormat.effortDuration(split.durationSeconds))")
+    }
+}
+
 private struct ClientRunningCompletionView: View {
     let result: ClientRunningResult
     let onDone: () -> Void
+    @EnvironmentObject private var session: ClientSessionStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visiblePointCount = 1
     @State private var showingSummary = false
@@ -324,6 +440,12 @@ private struct ClientRunningCompletionView: View {
 
     private var visibleRoute: [ClientRoutePoint] {
         Array(result.route.prefix(max(0, visiblePointCount)))
+    }
+
+    private var splits: [ClientRunningSplit] { ClientRunningAchievements.splits(for: result.route) }
+    private var recordAchievements: [ClientRunningRecordAchievement] {
+        ClientRunningAchievements.recordAchievements(results: session.activity.runningResults)
+            .filter { $0.sessionID == result.id }
     }
 
     var body: some View {
@@ -347,6 +469,7 @@ private struct ClientRunningCompletionView: View {
                     .mapStyle(.standard(elevation: .realistic))
                     .frame(height: 330)
                     .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .overlay { RoundedRectangle(cornerRadius: 24).stroke(ClientClay.border) }
                     .accessibilityLabel("Mappa del percorso completato")
 
                     if showingSummary {
@@ -357,7 +480,7 @@ private struct ClientRunningCompletionView: View {
                             .tint(ClientClay.accent).padding()
                     }
                 }
-                .padding(18)
+                .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
             }
             .clientPage()
             .navigationTitle(showingSummary ? "Corsa completata" : "Il tuo percorso")
@@ -375,6 +498,7 @@ private struct ClientRunningCompletionView: View {
         VStack(spacing: 15) {
             Label("Salvata su questo dispositivo", systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.sage)
+            if !recordAchievements.isEmpty { personalBestSummary }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 summaryMetric("Distanza", value: result.distanceKm.map { "\($0.formatted(.number.precision(.fractionLength(2)))) km" } ?? "Non disponibile")
                 summaryMetric("Durata", value: ClientRunningFormat.duration(result.durationSeconds))
@@ -382,9 +506,66 @@ private struct ClientRunningCompletionView: View {
                 summaryMetric("Velocità media", value: result.averageSpeedKmh.map { "\($0.formatted(.number.precision(.fractionLength(1)))) km/h" } ?? "Non disponibile")
                 summaryMetric("Velocità massima", value: result.maximumSpeedKmh.map { "\($0.formatted(.number.precision(.fractionLength(1)))) km/h" } ?? "Non disponibile")
             }
+            if !splits.isEmpty { splitSummary }
             Button("Fine", action: onDone).buttonStyle(ClayPrimaryButtonStyle())
         }
         .clayCard()
+    }
+
+    private var personalBestSummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(recordAchievements.count == 1 ? "NUOVO PERSONAL BEST" : "NUOVI PERSONAL BEST", systemImage: "trophy.fill")
+                .font(.headline.weight(.heavy)).foregroundStyle(ClientClay.gold)
+            ForEach(recordAchievements, id: \.target) { achievement in
+                let current = ClientRunningAchievements.bestEffort(for: result.route, target: achievement.target)
+                let previous = ClientRunningAchievements.leaderboard(
+                    results: session.activity.runningResults.filter { $0.completedAt < result.completedAt },
+                    target: achievement.target,
+                    limit: 1
+                ).first
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Text(achievement.target.title).font(.caption.weight(.bold)).tracking(0.8)
+                        Spacer()
+                        Text(ClientRunningFormat.effortDuration(achievement.durationSeconds))
+                            .font(.title3.monospacedDigit().weight(.heavy))
+                    }
+                    if let current, let previous {
+                        HStack {
+                            Text("PB precedente \(ClientRunningFormat.effortDuration(previous.effort.durationSeconds))")
+                            Spacer()
+                            Text("-\(ClientRunningFormat.effortDuration(previous.effort.durationSeconds - current.durationSeconds))")
+                        }
+                        .font(.caption.monospacedDigit()).foregroundStyle(ClientClay.inkSoft)
+                    } else {
+                        Text("Prima prestazione registrata su questa distanza")
+                            .font(.caption).foregroundStyle(ClientClay.inkSoft)
+                    }
+                }
+                .padding(12).background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .padding(15)
+        .background(ClientClay.gold.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
+        .overlay { RoundedRectangle(cornerRadius: 18).stroke(ClientClay.gold.opacity(0.38)) }
+    }
+
+    private var splitSummary: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ClientSectionHeader(title: "Split automatici", detail: "Ogni 1 km", symbol: "flag.checkered")
+            ForEach(splits) { split in
+                HStack {
+                    Text("KM \(split.index)").font(.subheadline.weight(.bold))
+                    Spacer()
+                    Text(ClientRunningFormat.effortDuration(split.durationSeconds)).font(.headline.monospacedDigit())
+                    Text(ClientRunningFormat.pace(split.averagePaceMinutesPerKm)).font(.caption.monospacedDigit()).foregroundStyle(ClientClay.secondaryInk)
+                }
+                .padding(.vertical, 5)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(14).background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 16))
+        .overlay { RoundedRectangle(cornerRadius: 16).stroke(ClientClay.border) }
     }
 
     private func summaryMetric(_ title: String, value: String) -> some View {
@@ -393,7 +574,8 @@ private struct ClientRunningCompletionView: View {
             Text(value).font(.headline.monospacedDigit()).minimumScaleFactor(0.7).lineLimit(2)
         }
         .padding(12).frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-        .background(ClientClay.surfaceDeep.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
+        .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).stroke(ClientClay.border) }
     }
 
     private func replay() async {
@@ -418,6 +600,65 @@ private struct ClientRunningCompletionView: View {
     }
 }
 
+private struct ClientPersonalBestDetailView: View {
+    let target: ClientRunningTarget
+    let results: [ClientRunningResult]
+    @Environment(\.dismiss) private var dismiss
+
+    private var top: [ClientRunningLeaderboardEntry] {
+        ClientRunningAchievements.leaderboard(results: results, target: target)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(target.title).font(.caption.weight(.bold)).tracking(1).foregroundStyle(ClientClay.gold)
+                        Text("Migliori prestazioni").font(.system(.title, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                        Text("Un solo miglior tratto per corsa, calcolato sui campioni GPS effettivi.")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                    }
+                    .premiumCard(tint: ClientClay.gold)
+
+                    ForEach(Array(top.enumerated()), id: \.element.id) { index, entry in
+                        HStack(alignment: .top, spacing: 13) {
+                            Image(systemName: "\(index + 1).circle.fill")
+                                .font(.title2).foregroundStyle(index == 0 ? ClientClay.gold : ClientClay.secondaryInk)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(index == 0 ? "RECORD" : "\(index + 1)° TEMPO")
+                                    .font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(ClientClay.secondaryInk)
+                                Text(ClientRunningFormat.effortDuration(entry.effort.durationSeconds))
+                                    .font(.system(.title2, design: .rounded, weight: .heavy).monospacedDigit())
+                                Text("\(ClientRunningFormat.pace(entry.effort.averagePaceMinutesPerKm)) · \(entry.effort.averageSpeedKmh?.formatted(.number.precision(.fractionLength(1))) ?? "—") km/h")
+                                    .font(.caption.monospacedDigit()).foregroundStyle(ClientClay.inkSoft)
+                                Text(entry.completedAt.formatted(date: .long, time: .omitted))
+                                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                                if (entry.sessionDistanceKm ?? target.kilometers) > target.kilometers + 0.05 {
+                                    Label("Tratto interno di una corsa da \(entry.sessionDistanceKm?.formatted(.number.precision(.fractionLength(1))) ?? "—") km", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                                        .font(.caption2).foregroundStyle(ClientClay.runAccent)
+                                }
+                            }
+                            Spacer()
+                            if index > 0, let first = top.first {
+                                Text("+\(ClientRunningFormat.effortDuration(entry.effort.durationSeconds - first.effort.durationSeconds))")
+                                    .font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
+                            }
+                        }
+                        .clayCard(padding: 15)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
+            }
+            .clientPage()
+            .navigationTitle("Top 3 · \(target.title)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { dismiss() } } }
+        }
+    }
+}
+
 private enum ClientRunningMap {
     static func camera(for route: [ClientRoutePoint]) -> MapCameraPosition {
         guard let first = route.first else { return .automatic }
@@ -436,7 +677,7 @@ private enum ClientRunningMap {
     }
 }
 
-private enum ClientRunningFormat {
+enum ClientRunningFormat {
     static func duration(_ seconds: TimeInterval) -> String {
         let value = max(0, Int(seconds))
         return String(format: "%02d:%02d:%02d", value / 3_600, value / 60 % 60, value % 60)
@@ -450,6 +691,12 @@ private enum ClientRunningFormat {
     static func pace(_ minutesPerKm: Double) -> String {
         let totalSeconds = max(0, Int((minutesPerKm * 60).rounded()))
         return String(format: "%d'%02d\" /km", totalSeconds / 60, totalSeconds % 60)
+    }
+
+    static func effortDuration(_ seconds: TimeInterval) -> String {
+        let value = max(0, Int(seconds.rounded()))
+        if value >= 3_600 { return String(format: "%02d:%02d:%02d", value / 3_600, value / 60 % 60, value % 60) }
+        return String(format: "%02d:%02d", value / 60, value % 60)
     }
 }
 

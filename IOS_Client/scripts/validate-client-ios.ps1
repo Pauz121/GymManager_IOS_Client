@@ -106,6 +106,11 @@ $running = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Running\Cli
 $nutrition = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Nutrition\ClientNutritionView.swift') -Raw
 $account = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Space\ClientAccountView.swift') -Raw
 $tabsSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'App\ClientTabView.swift') -Raw
+$rootSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'App\ClientRootView.swift') -Raw
+$designSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientDesignSystem.swift') -Raw
+$activityModels = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientActivityModels.swift') -Raw
+$activityInsights = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientActivityInsights.swift') -Raw
+$activityDashboard = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Workout\ClientActivityDashboardView.swift') -Raw
 Assert-Check ($homeSource -match 'Ciao, \\\(identity\.firstName\)' -and $homeSource -match 'Allenamento di oggi' -and $homeSource -match 'Nutrizione di oggi') 'Home is today-first and uses the authenticated Client name'
 Assert-Check ($workoutExecution -match 'Completa serie' -and $workoutExecution -match 'ClientRestTimerBar' -and $workoutExecution -match 'Termina allenamento') 'Workout execution includes set completion, rest timer and final check'
 Assert-Check ($workoutExecution -match 'Fatica percepita' -and $workoutExecution -match 'Qualità allenamento' -and $workoutExecution -match 'Dolori o fastidi') 'Post-workout flow is limited to rapid feedback fields'
@@ -121,12 +126,12 @@ Assert-Check ($running -match 'MapPolyline' -and $running -match 'location\.dist
 Assert-Check ($running -match 'onLongPressGesture' -and $running -match 'ClientRunningCompletionView' -and $running -match 'accessibilityReduceMotion') 'Running has protected finish, route replay and Reduce Motion support'
 Assert-Check ($swift -match 'route: \[ClientRoutePoint\]' -and $swift -match 'maximumSpeedKmh' -and $swift -match 'averageSpeedKmh') 'Completed runs persist route and final speed metrics'
 Assert-Check ($swift -match 'capabilities\.runningEnabled' -and $swift -match 'runningPlan != nil') 'Running UI is gated by Client capability and assigned plan'
-Assert-Check ($homeSource -match 'ClientCircularProgress' -and $homeSource.IndexOf('stepsCard') -lt $homeSource.IndexOf('dayStatusCard')) 'Home places circular daily steps above the daily status content'
+Assert-Check ($homeSource -match 'ClientCircularProgress' -and $homeSource.IndexOf('stepsCard') -lt $homeSource.IndexOf('ClientSectionHeader(title: "Priorità"')) 'Home places circular daily steps inside the top daily hero'
 Assert-Check ($health -match 'ClientHealthDayWindow' -and $health -match '\.autoupdatingCurrent' -and $health -match '\.cumulativeSum') 'HealthKit total uses the current local day and HealthKit cumulative source reconciliation'
 Assert-Check ($health -notmatch 'HKSampleQuery' -and $health -notmatch 'reduce\s*\{') 'HealthKit steps are not manually summed across potentially overlapping sources'
 Assert-Check ($homeSource -match 'refreshIfPreviouslyRequested' -and $homeSource -match 'scenePhase' -and $homeSource -match 'Task\.sleep\(for: \.seconds\(60\)\)') 'HealthKit steps refresh periodically and when the app becomes active'
 Assert-Check ($homeSource -match 'IL TUO OGGI' -and $homeSource -match 'dayStatusHeadline' -and $homeSource -notmatch 'Il tuo percorso') 'Home replaces the old journey block with actionable daily status'
-Assert-Check ($homeSource -match 'Piano completato' -and $homeSource -match 'ProgressView\(value: Double\(completed\)' -and $homeSource -match 'withAnimation\(\.snappy') 'Home nutrition has premium one-tap animated completion and daily progress'
+Assert-Check ($homeSource -match 'Piano completato' -and $homeSource -match 'ClientProgressSegmentBar\(completed: completed' -and $homeSource -match 'withAnimation\(\.snappy') 'Home nutrition has premium one-tap animated completion and daily progress'
 $workoutBrowse = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Workout\ClientWorkoutView.swift') -Raw
 $progressSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Progress\ClientProgressView.swift') -Raw
 Assert-Check ($workoutBrowse -match 'selectedExercise' -and $workoutBrowse -match 'ClientExerciseDetailSheet' -and $workoutBrowse -match 'Storico personale' -and $workoutBrowse -match 'videoURL') 'Every browsed exercise opens supported prescription, media and local history details'
@@ -136,9 +141,29 @@ Assert-Check ($nutrition -match 'ForEach\(plan\.days\)' -and $nutrition -match '
 Assert-Check ($account -match 'PhotosPicker' -and $tabsSource -match 'avatarStore\.image' -and $swift -match 'GymManagerClient/Avatars') 'Profile photo is local per account and appears in the Spazio tab'
 Assert-Check ($homeSource -match 'homeAgendaTasks' -and $homeSource -match 'toggleAgendaTask') 'Home shows and completes personal Agenda activities'
 Assert-Check ($locationSource -match 'allowsBackgroundLocationUpdates = true' -and $running -match 'ClientRunLiveActivityManager') 'Running continues location updates and publishes lock-screen metrics'
+Assert-Check ($rootSource -match 'preferredColorScheme\(\.dark\)' -and $designSource -match 'surfaceElevated' -and $designSource -match 'brandGradient') 'Client uses centralized layered dark premium tokens'
+Assert-Check ($tabsSource -match 'ClientPremiumTabBar' -and $tabsSource -match 'safeAreaInset\(edge: \.bottom' -and $tabsSource -match 'accessibilityAddTraits') 'Bottom navigation uses a custom accessible premium dark tab bar'
+Assert-Check ($homeSource -match 'dailyHero' -and $homeSource -match 'ClientProgressSegmentBar' -and $homeSource -match 'ViewThatFits') 'Home combines top daily hero, meal progress and adaptive layouts'
+Assert-Check ($workoutExecution -match 'ESERCIZIO ATTIVO' -and $workoutExecution -match 'clientInputField' -and $workoutExecution -match 'focusedField') 'Workout execution has a high-contrast active state and keyboard-safe inputs'
+Assert-Check ($nutrition -match 'currentDayHero' -and $nutrition -match 'ScrollView\(\.horizontal' -and $nutrition -match 'dayPill') 'Nutrition highlights today and exposes only real plan days in its selector'
+Assert-Check ($progressSource -match 'recentWeightDelta' -and $progressSource -match 'ClientDirectionalBadge' -and $progressSource -match 'chartPlotStyle') 'Progress uses neutral recent deltas and integrated dark charts'
+Assert-Check ($progressSource -notmatch '(?i)body fat|massa magra|storico passi') 'Progress does not invent unavailable body composition or step history'
+Assert-Check ($workoutBrowse -match 'case activity = "Attività"' -and $workoutBrowse -match 'case gym = "Palestra"' -and $workoutBrowse -match 'case running = "Corsa"' -and $workoutBrowse -match 'case recap = "Riepilogo"' -and $workoutBrowse -match 'category: Category = \.activity') 'Training opens Activity first and preserves Gym, Running and Recap'
+Assert-Check ($activityDashboard -match '0\.\.<42' -and $activityDashboard -match 'Palestra' -and $activityDashboard -match 'Corsa' -and $activityDashboard -match 'Entrambi') 'Activity calendar uses a fixed compact month and non-color-only legend'
+Assert-Check ($activityInsights -match 'state\.workouts' -and $activityInsights -match 'state\.runningResults' -and $activityInsights -notmatch '(?i)calendar_table|activity_calendar') 'Activity calendar derives from real workout and running sessions without a duplicate calendar store'
+Assert-Check ($activityInsights -match 'gymSessions' -and $activityInsights -match 'runningDistanceKm' -and $activityInsights -match 'activeSeconds' -and $activityInsights -match 'activeDays' -and $activityInsights -match 'personalBests') 'Monthly and period summaries aggregate only supported activity metrics'
+Assert-Check ($activityModels -match 'elapsedSeconds: TimeInterval\?' -and $locationSource -match 'stabilizedUpdateInterval: TimeInterval = 25' -and $locationSource -match 'smoothingWindow: TimeInterval = 30') 'Running persists active sample time and stabilizes live speed on a 25-second cadence'
+Assert-Check ($running -match 'Ritmo attuale · 25s' -and $running -match 'Velocità attuale · 25s' -and $running -match 'Ritmo medio' -and $running -match 'Velocità media') 'Running live shows pace and speed simultaneously with session averages'
+Assert-Check ($activityInsights -match 'func splits\(for route:' -and $activityInsights -match 'Double\(index\) \* 1_000' -and $running -match 'ClientRunSplitToast') 'Running generates and presents automatic one-kilometer splits'
+Assert-Check ($activityInsights -match 'case oneKilometer = 1_000' -and $activityInsights -match 'case threeKilometers = 3_000' -and $activityInsights -match 'case fiveKilometers = 5_000' -and $activityInsights -match 'case tenKilometers = 10_000') 'Personal Best supports 1K, 3K, 5K and 10K without extrapolation'
+Assert-Check ($activityInsights -match 'startOffsetMeters' -and $activityInsights -match 'interpolatedSample' -and $activityInsights -match 'start\.distance \+ Double\(target\.rawValue\)') 'Best-effort engine searches interpolated internal route windows'
+Assert-Check ($activityInsights -match 'func leaderboard' -and $activityInsights -match 'entries\.count < max\(0, limit\)' -and $activityInsights -match 'sessionID == candidate\.sessionID') 'Top 3 is sorted and deduplicated per running session'
+Assert-Check ($running -match 'ClientPersonalBestDetailView' -and $running -match 'Split automatici' -and $running -match 'NUOVI PERSONAL BEST') 'Running home and final summary expose Top 3, splits and multiple PB results'
+Assert-Check ($activityDashboard -match 'ClientActivityPeriod\.allCases' -and $activityDashboard -match 'BarMark' -and $activityDashboard -match 'LineMark') 'Recap supports month, 3, 6 and 12 months with at most two focused charts'
 
 $tests = Get-Content -LiteralPath (Join-Path $clientRoot 'GymManagerClientTests\ClientPhase1Tests.swift') -Raw
 Assert-Check (([regex]::Matches($tests, '(?m)^\s*func test')).Count -ge 30) 'At least 30 native unit tests are defined'
+Assert-Check ($tests -match 'testAutomaticKilometerSplitsRequireCompletedDistance' -and $tests -match 'testBestEffortFindsInternalThreeKilometerWindow' -and $tests -match 'testRunningTopThreeSortsAndKeepsOneEntryPerSession' -and $tests -match 'testActivityAggregationCombinesGymAndRunningWithoutDuplicates') 'Native tests cover splits, internal best effort, Top 3 and activity aggregation'
 
 $trainerProjectPath = Join-Path $trainerRoot 'GymManager.xcodeproj\project.pbxproj'
 if (Test-Path -LiteralPath $trainerProjectPath) {

@@ -1,24 +1,38 @@
 import SwiftUI
 
 enum ClientClay {
-    static let canvas = Color(red: 0.973, green: 0.965, blue: 0.941)
-    static let canvasWarm = Color(red: 0.949, green: 0.922, blue: 0.874)
-    static let surface = Color(red: 0.995, green: 0.988, blue: 0.969)
-    static let surfaceDeep = Color(red: 0.941, green: 0.925, blue: 0.882)
-    static let ink = Color(red: 0.141, green: 0.133, blue: 0.125)
-    static let inkSoft = Color(red: 0.215, green: 0.196, blue: 0.181)
-    static let secondaryInk = Color(red: 0.38, green: 0.36, blue: 0.34)
-    static let accent = Color(red: 0.757, green: 0.231, blue: 0.161)
-    static let accentSoft = Color(red: 0.98, green: 0.89, blue: 0.85)
-    static let sage = Color(red: 0.220, green: 0.420, blue: 0.357)
-    static let sageSoft = Color(red: 0.867, green: 0.922, blue: 0.878)
-    static let gold = Color(red: 0.773, green: 0.553, blue: 0.216)
-    static let warning = Color(red: 0.72, green: 0.47, blue: 0.15)
+    static let canvas = Color(red: 0.043, green: 0.043, blue: 0.051)
+    static let canvasWarm = Color(red: 0.075, green: 0.071, blue: 0.078)
+    static let surface = Color(red: 0.082, green: 0.082, blue: 0.090)
+    static let surfaceDeep = Color(red: 0.114, green: 0.114, blue: 0.125)
+    static let surfaceElevated = Color(red: 0.145, green: 0.141, blue: 0.153)
+    static let inset = Color(red: 0.059, green: 0.059, blue: 0.067)
+    static let ink = Color(red: 0.957, green: 0.957, blue: 0.965)
+    static let inkSoft = Color(red: 0.831, green: 0.831, blue: 0.847)
+    static let secondaryInk = Color(red: 0.631, green: 0.631, blue: 0.667)
+    static let tertiaryInk = Color(red: 0.443, green: 0.443, blue: 0.478)
+    static let accent = Color(red: 1.000, green: 0.310, blue: 0.196)
+    static let accentHot = Color(red: 1.000, green: 0.208, blue: 0.161)
+    static let accentSoft = Color(red: 1.000, green: 0.690, blue: 0.604)
+    static let sage = Color(red: 0.188, green: 0.820, blue: 0.345)
+    static let sageSoft = Color(red: 0.082, green: 0.220, blue: 0.125)
+    static let runAccent = Color(red: 0.110, green: 0.765, blue: 0.925)
+    static let gold = Color(red: 1.000, green: 0.624, blue: 0.039)
+    static let warning = Color(red: 1.000, green: 0.624, blue: 0.039)
+    static let border = Color.white.opacity(0.08)
     static let radius: CGFloat = 22
+    static let pagePadding: CGFloat = 16
+
+    static let brandGradient = LinearGradient(
+        colors: [accent, accentHot],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }
 
 struct ClayCardModifier: ViewModifier {
     var padding: CGFloat = 18
+    @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
         content
@@ -26,21 +40,11 @@ struct ClayCardModifier: ViewModifier {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [ClientClay.surface, ClientClay.surfaceDeep.opacity(0.58)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(color: ClientClay.ink.opacity(0.07), radius: 14, x: 7, y: 9)
-                    .shadow(color: .white.opacity(0.82), radius: 9, x: -5, y: -6)
+                    .fill(LinearGradient(colors: [ClientClay.surfaceDeep, ClientClay.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .shadow(color: .black.opacity(0.34), radius: 16, y: 9)
                     .overlay {
                         RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
-                            .stroke(
-                                LinearGradient(colors: [.white.opacity(0.9), ClientClay.ink.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                                lineWidth: 1
-                            )
+                            .stroke(.white.opacity(contrast == .increased ? 0.22 : 0.08), lineWidth: contrast == .increased ? 1.5 : 1)
                     }
             }
     }
@@ -60,21 +64,21 @@ struct ClientPremiumCardModifier: ViewModifier {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [ClientClay.ink, ClientClay.inkSoft, tint.opacity(0.82)],
+                                colors: [ClientClay.surfaceElevated, ClientClay.surface, tint.opacity(0.22)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                     Circle()
-                        .fill(tint.opacity(0.42))
+                        .fill(tint.opacity(0.20))
                         .frame(width: 150, height: 150)
-                        .blur(radius: 8)
+                        .blur(radius: 18)
                         .offset(x: 52, y: -65)
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(.white.opacity(0.16), lineWidth: 1)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .shadow(color: ClientClay.ink.opacity(0.22), radius: 18, y: 12)
+                .shadow(color: .black.opacity(0.42), radius: 20, y: 12)
             }
     }
 }
@@ -86,13 +90,19 @@ extension View {
     }
     func clientPage() -> some View {
         background {
-            LinearGradient(
-                colors: [ClientClay.canvas, ClientClay.canvasWarm.opacity(0.64), ClientClay.canvas],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            ZStack {
+                LinearGradient(colors: [ClientClay.canvas, ClientClay.canvasWarm, ClientClay.canvas], startPoint: .topLeading, endPoint: .bottomTrailing)
+                RadialGradient(colors: [ClientClay.accent.opacity(0.09), .clear], center: .topTrailing, startRadius: 10, endRadius: 360)
+            }.ignoresSafeArea()
         }
+    }
+
+    func clientInputField() -> some View {
+        padding(.horizontal, 12)
+            .frame(minHeight: 48)
+            .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(ClientClay.border) }
+            .foregroundStyle(ClientClay.ink)
     }
 }
 
@@ -102,9 +112,9 @@ struct ClayPrimaryButtonStyle: ButtonStyle {
             .font(.headline)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 50)
-            .background(configuration.isPressed ? ClientClay.accent.opacity(0.78) : ClientClay.accent)
+            .background(configuration.isPressed ? AnyShapeStyle(ClientClay.accent.opacity(0.76)) : AnyShapeStyle(ClientClay.brandGradient))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: ClientClay.accent.opacity(0.22), radius: 9, y: 6)
+            .shadow(color: ClientClay.accent.opacity(0.25), radius: 10, y: 5)
             .scaleEffect(configuration.isPressed ? 0.975 : 1)
             .animation(.snappy(duration: 0.18), value: configuration.isPressed)
     }
@@ -116,9 +126,9 @@ struct ClaySecondaryButtonStyle: ButtonStyle {
             .font(.headline)
             .foregroundStyle(ClientClay.ink)
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(ClientClay.surfaceDeep.opacity(configuration.isPressed ? 0.72 : 1))
+            .background(configuration.isPressed ? ClientClay.surface : ClientClay.surfaceDeep)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.72)) }
+            .overlay { RoundedRectangle(cornerRadius: 16).stroke(ClientClay.border) }
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(.snappy(duration: 0.18), value: configuration.isPressed)
     }
@@ -241,5 +251,38 @@ struct ClientFailureView: View {
         } description: { Text(message) } actions: {
             Button("Riprova", action: retry).buttonStyle(.borderedProminent).tint(ClientClay.accent)
         }
+    }
+}
+
+struct ClientProgressSegmentBar: View {
+    let completed: Int
+    let total: Int
+    var tint = ClientClay.sage
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<max(1, total), id: \.self) { index in
+                Capsule()
+                    .fill(index < completed && total > 0 ? tint : ClientClay.surfaceElevated)
+                    .frame(maxWidth: .infinity, minHeight: 5, maxHeight: 5)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progresso")
+        .accessibilityValue(total > 0 ? "\(completed) di \(total)" : "Non disponibile")
+    }
+}
+
+struct ClientDirectionalBadge: View {
+    let text: String
+    let direction: FloatingPointSign?
+
+    var body: some View {
+        Label(text, systemImage: direction == .plus ? "arrow.up.right" : direction == .minus ? "arrow.down.right" : "equal")
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(ClientClay.inkSoft)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(ClientClay.inset, in: Capsule())
+            .overlay { Capsule().stroke(ClientClay.border) }
     }
 }

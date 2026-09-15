@@ -111,6 +111,7 @@ struct ClientRoutePoint: Codable, Equatable, Sendable {
     let timestamp: Date
     let horizontalAccuracy: Double
     let speedMetersPerSecond: Double?
+    var elapsedSeconds: TimeInterval? = nil
 }
 
 struct ClientRunningResult: Identifiable, Codable, Equatable, Sendable {
@@ -143,7 +144,25 @@ enum ClientRunningMetrics {
         }
     }
 
-    private static func distanceMeters(from first: ClientRoutePoint, to second: ClientRoutePoint) -> Double {
+    static func stabilizedSpeedMetersPerSecond(
+        for route: [ClientRoutePoint],
+        windowSeconds: TimeInterval = 30,
+        minimumSampleSeconds: TimeInterval = 10
+    ) -> Double? {
+        guard let first = route.first, let latest = route.last, route.count > 1 else { return nil }
+        func elapsed(_ point: ClientRoutePoint) -> TimeInterval {
+            point.elapsedSeconds ?? max(0, point.timestamp.timeIntervalSince(first.timestamp))
+        }
+        let latestElapsed = elapsed(latest)
+        let threshold = latestElapsed - max(1, windowSeconds)
+        let recent = route.filter { elapsed($0) >= threshold }
+        guard let start = recent.first, recent.count > 1 else { return nil }
+        let duration = latestElapsed - elapsed(start)
+        guard duration >= minimumSampleSeconds else { return nil }
+        return distanceMeters(for: recent) / duration
+    }
+
+    static func distanceMeters(from first: ClientRoutePoint, to second: ClientRoutePoint) -> Double {
         let earthRadius = 6_371_000.0
         let latitudeDelta = radians(second.latitude - first.latitude)
         let longitudeDelta = radians(second.longitude - first.longitude)

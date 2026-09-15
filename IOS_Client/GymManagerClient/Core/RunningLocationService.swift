@@ -18,11 +18,17 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
     @Published private(set) var state: State = CLLocationManager.locationServicesEnabled() ? .idle : .unavailable
     @Published private(set) var route: [ClientRoutePoint] = []
     @Published private(set) var currentSpeedMetersPerSecond: Double?
+    @Published private(set) var stabilizedSpeedMetersPerSecond: Double?
     @Published private(set) var maximumSpeedMetersPerSecond: Double?
 
     private let manager = CLLocationManager()
     private var shouldTrack = false
     private var previousAcceptedSpeed: Double?
+    private var accumulatedActiveSeconds: TimeInterval = 0
+    private var activeStartedAt: Date?
+    private var lastStabilizedElapsed: TimeInterval = 0
+    private let stabilizedUpdateInterval: TimeInterval = 25
+    private let smoothingWindow: TimeInterval = 30
 
     override init() {
         super.init()
@@ -35,35 +41,52 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
 
     var distanceKm: Double { ClientRunningMetrics.distanceMeters(for: route) / 1_000 }
 
-    func beginNewRun() {
+    func beginNewRun(now: Date = Date()) {
         route = []
         currentSpeedMetersPerSecond = nil
+        stabilizedSpeedMetersPerSecond = nil
         maximumSpeedMetersPerSecond = nil
         previousAcceptedSpeed = nil
+        accumulatedActiveSeconds = 0
+        activeStartedAt = now
+        lastStabilizedElapsed = 0
         beginTracking()
     }
 
-    func resumeRun(route existingRoute: [ClientRoutePoint], maximumSpeedMetersPerSecond: Double?) {
+    func resumeRun(
+        route existingRoute: [ClientRoutePoint],
+        maximumSpeedMetersPerSecond: Double?,
+        elapsedSeconds: TimeInterval,
+        now: Date = Date()
+    ) {
         if route.isEmpty { route = existingRoute }
         self.maximumSpeedMetersPerSecond = maximumSpeedMetersPerSecond
+        accumulatedActiveSeconds = max(0, elapsedSeconds)
+        activeStartedAt = now
+        lastStabilizedElapsed = accumulatedActiveSeconds
+        stabilizedSpeedMetersPerSecond = nil
         beginTracking()
     }
 
-    func stopTracking() {
+    func stopTracking(now: Date = Date()) {
+        captureElapsed(at: now)
         shouldTrack = false
         manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
         manager.showsBackgroundLocationIndicator = false
         currentSpeedMetersPerSecond = nil
+        stabilizedSpeedMetersPerSecond = nil
         if state != .denied, state != .restricted, state != .unavailable { state = .idle }
     }
 
-    func pauseTracking() {
+    func pauseTracking(now: Date = Date()) {
+        captureElapsed(at: now)
         shouldTrack = false
         manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
         manager.showsBackgroundLocationIndicator = false
         currentSpeedMetersPerSecond = nil
+        stabilizedSpeedMetersPerSecond = nil
         if state != .denied, state != .restricted, state != .unavailable { state = .idle }
     }
 
@@ -139,9 +162,11 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
             longitude: location.coordinate.longitude,
             timestamp: location.timestamp,
             horizontalAccuracy: location.horizontalAccuracy,
-            speedMetersPerSecond: plausibleSpeed
+            speedMetersPerSecond: plausibleSpeed,
+            elapsedSeconds: activeElapsed(at: location.timestamp)
         ))
         currentSpeedMetersPerSecond = plausibleSpeed
+        refreshStabilizedSpeedIfNeeded()
 
         if let speed = plausibleSpeed, let previousSpeed = previousAcceptedSpeed,
            abs(speed - previousSpeed) <= max(1.5, previousSpeed * 0.45) {
@@ -149,5 +174,25 @@ final class RunningLocationService: NSObject, ObservableObject, @preconcurrency 
         }
         previousAcceptedSpeed = plausibleSpeed
         state = manager.accuracyAuthorization == .reducedAccuracy ? .reducedAccuracy : .tracking
+    }
+
+    private func activeElapsed(at date: Date) -> TimeInterval {
+        accumulatedActiveSeconds + (activeStartedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    private func captureElapsed(at date: Date) {
+        guard let activeStartedAt else { return }
+        accumulatedActiveSeconds += max(0, date.timeIntervalSince(activeStartedAt))
+        self.activeStartedAt = nil
+    }
+
+    private func refreshStabilizedSpeedIfNeeded() {
+        guard let latest = route.last,
+              let latestElapsed = latest.elapsedSeconds,
+              latestElapsed - lastStabilizedElapsed >= stabilizedUpdateInterval else { return }
+        lastStabilizedElapsed = latestElapsed
+        let speed = ClientRunningMetrics.stabilizedSpeedMetersPerSecond(for: route, windowSeconds: smoothingWindow)
+        if let speed, speed >= 0.8, speed <= 12 { stabilizedSpeedMetersPerSecond = speed }
+        else { stabilizedSpeedMetersPerSecond = nil }
     }
 }

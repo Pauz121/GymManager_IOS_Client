@@ -9,9 +9,10 @@ struct ClientOnboardingView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     Spacer(minLength: 28)
                     ZStack {
-                        Circle().fill(ClientClay.accentSoft).frame(width: 88, height: 88)
-                            .shadow(color: ClientClay.ink.opacity(0.08), radius: 14, x: 7, y: 9)
-                        Image(systemName: "figure.mind.and.body").font(.system(size: 40, weight: .semibold)).foregroundStyle(ClientClay.accent)
+                        Circle().fill(ClientClay.accent.opacity(0.14)).frame(width: 88, height: 88)
+                            .overlay { Circle().stroke(ClientClay.accent.opacity(0.34), lineWidth: 1) }
+                            .shadow(color: ClientClay.accent.opacity(0.18), radius: 16)
+                        Image(systemName: "figure.mind.and.body").font(.system(size: 40, weight: .semibold)).foregroundStyle(ClientClay.accentSoft)
                     }
                     ClientPageTitle("Il tuo percorso, ogni giorno.", eyebrow: "GymManager Client", subtitle: "Allenamento, nutrizione e progressi in uno spazio semplice, personale e sempre con te.")
 
@@ -29,7 +30,7 @@ struct ClientOnboardingView: View {
                     DemoEntryButton()
                     #endif
                 }
-                .padding(20)
+                .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 20)
             }
             .clientPage()
             .navigationDestination(for: Path.self) { path in
@@ -52,14 +53,14 @@ private struct TrainerCodeView: View {
                 ClientPageTitle("Collegati al Trainer", eyebrow: "Percorso guidato", subtitle: "Il codice collegherà il tuo account alla scheda Cliente già creata dal professionista, senza duplicarla.")
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Codice Trainer", text: $code).textInputAutocapitalization(.characters).textContentType(.oneTimeCode)
-                        .padding(15).background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+                        .clientInputField()
                     Button("Collega il mio account") {}.buttonStyle(ClayPrimaryButtonStyle()).disabled(true)
                     Label("Attivazione sicura in preparazione. In questa fase nessun codice viene inviato o consumato.", systemImage: "lock.shield")
                         .font(.footnote).foregroundStyle(ClientClay.secondaryInk)
                 }.clayCard()
                 NavigationLink("Ho già ricevuto l’accesso · Accedi") { ClientSignInView() }
                     .buttonStyle(ClaySecondaryButtonStyle())
-            }.padding(20)
+            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 20)
         }.clientPage().navigationTitle("Codice Trainer").navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -71,7 +72,7 @@ private struct StandaloneEntryView: View {
                 ClientPageTitle("Inizia dal tuo spazio", eyebrow: "Modalità autonoma", subtitle: "L’Agenda personale sarà disponibile anche senza Trainer. I piani personali arriveranno nella Fase 2.")
                 ClientEmptyState(symbol: "person.crop.circle.badge.plus", title: "Registrazione in preparazione", message: "Non creeremo un account finché il servizio sicuro non sarà attivo.")
                 NavigationLink("Ho già un account · Accedi") { ClientSignInView() }.buttonStyle(ClayPrimaryButtonStyle())
-            }.padding(20)
+            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 20)
         }.clientPage().navigationTitle("Senza Trainer").navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -87,13 +88,15 @@ private struct ClientSignInView: View {
                 ClientPageTitle("Bentornato", eyebrow: "Accesso Cliente", subtitle: "Usa le credenziali del tuo account Cliente.")
                 VStack(spacing: 14) {
                     TextField("Email o username", text: $identifier).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .clientInputField()
                     SecureField("Password", text: $password).textContentType(.password)
+                        .clientInputField()
                     Button { Task { await session.signIn(identifier: identifier, password: password) } } label: {
                         if session.isSubmitting { ProgressView().tint(.white) } else { Text("Accedi") }
                     }.buttonStyle(ClayPrimaryButtonStyle()).disabled(session.isSubmitting)
                 }
-                .textFieldStyle(.roundedBorder).clayCard()
-            }.padding(20)
+                .clayCard()
+            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 20)
         }.clientPage().navigationTitle("Accesso").navigationBarTitleDisplayMode(.inline)
     }
 }

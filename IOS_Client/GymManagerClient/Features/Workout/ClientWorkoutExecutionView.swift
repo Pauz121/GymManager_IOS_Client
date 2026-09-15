@@ -11,6 +11,7 @@ struct ClientWorkoutExecutionView: View {
     @State private var noteExercise: ClientExercise?
     @State private var showingFeedback = false
     @State private var showingExitConfirmation = false
+    @FocusState private var focusedField: String?
 
     private var execution: ClientWorkoutExecution? {
         session.workoutExecution(sessionID: workoutSession.id)
@@ -29,7 +30,7 @@ struct ClientWorkoutExecutionView: View {
                         exerciseCard(exercise)
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
             }
             .clientPage()
             .navigationTitle(workoutSession.name)
@@ -56,7 +57,7 @@ struct ClientWorkoutExecutionView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
-                .background(.ultraThinMaterial)
+                .background(ClientClay.canvas.opacity(0.97))
             }
             .onAppear {
                 session.beginWorkout(plan: plan, workoutSession: workoutSession)
@@ -80,27 +81,38 @@ struct ClientWorkoutExecutionView: View {
             } message: {
                 Text("Le serie completate restano su questo dispositivo e potrai riprendere dalla Home.")
             }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Fine") { focusedField = nil }.fontWeight(.semibold)
+                }
+            }
         }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(plan.title).font(.title2.weight(.bold))
+            Text("SESSIONE ATTIVA").font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.64))
+            Text(plan.title).font(.title2.weight(.heavy)).foregroundStyle(.white)
             Text("Settimana \(plan.currentWeek) · \(workoutSession.name)")
-                .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                .font(.subheadline).foregroundStyle(.white.opacity(0.68))
             let completed = execution?.completedExerciseCount ?? 0
-            ProgressView(value: Double(completed), total: Double(max(1, workoutSession.exercises.count))).tint(ClientClay.sage)
+            ClientProgressSegmentBar(completed: completed, total: workoutSession.exercises.count, tint: ClientClay.sage)
             Text("\(completed) / \(workoutSession.exercises.count) esercizi completati")
-                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.72))
         }
-        .clayCard()
+        .premiumCard(tint: completed == workoutSession.exercises.count ? ClientClay.sage : ClientClay.accent)
     }
 
     private func exerciseCard(_ exercise: ClientExercise) -> some View {
         let log = exerciseLog(for: exercise.id)
+        let isCurrent = log?.isCompleted != true && workoutSession.exercises.first(where: { exerciseLog(for: $0.id)?.isCompleted != true })?.id == exercise.id
         return VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
+                    if isCurrent {
+                        Text("ESERCIZIO ATTIVO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(ClientClay.accent)
+                    }
                     Text(exercise.name.uppercased()).font(.headline)
                     Text(prescription(for: exercise)).font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                 }
@@ -124,6 +136,11 @@ struct ClientWorkoutExecutionView: View {
             }
         }
         .clayCard()
+        .overlay {
+            RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
+                .stroke(isCurrent ? ClientClay.accent.opacity(0.72) : log?.isCompleted == true ? ClientClay.sage.opacity(0.34) : ClientClay.border, lineWidth: isCurrent ? 1.5 : 1)
+        }
+        .shadow(color: isCurrent ? ClientClay.accent.opacity(0.12) : .clear, radius: 8)
     }
 
     @ViewBuilder private func setRow(exercise: ClientExercise, number: Int, log: ClientSetLog?) -> some View {
@@ -139,6 +156,8 @@ struct ClientWorkoutExecutionView: View {
                     .font(.caption.weight(.semibold))
             }
             .frame(minHeight: 52)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(ClientClay.sageSoft.opacity(0.68), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityElement(children: .combine)
         } else {
             VStack(alignment: .leading, spacing: 10) {
@@ -159,6 +178,9 @@ struct ClientWorkoutExecutionView: View {
                 .buttonStyle(ClayPrimaryButtonStyle())
                 .accessibilityHint("Registra la serie e avvia automaticamente il recupero")
             }
+            .padding(12)
+            .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ClientClay.border) }
         }
     }
 
@@ -166,12 +188,12 @@ struct ClientWorkoutExecutionView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Eseguito · reps").font(.caption).foregroundStyle(ClientClay.secondaryInk)
             TextField("–", text: draftBinding(storage: $repetitionsDraft, key: key(exercise.id, number), fallback: exercise.suggestedActualRepetitions.map(String.init) ?? ""))
-                .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+                .keyboardType(.numberPad).focused($focusedField, equals: "\(key(exercise.id, number))-reps").clientInputField()
         }
         VStack(alignment: .leading, spacing: 4) {
             Text("Eseguito · kg").font(.caption).foregroundStyle(ClientClay.secondaryInk)
             TextField("–", text: draftBinding(storage: $loadDraft, key: key(exercise.id, number), fallback: exercise.loadKg.map { $0.formatted() } ?? ""))
-                .keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                .keyboardType(.decimalPad).focused($focusedField, equals: "\(key(exercise.id, number))-load").clientInputField()
         }
     }
 
@@ -251,26 +273,28 @@ private struct ClientRestTimerBar: View {
 
     var body: some View {
         VStack(spacing: 9) {
+            Capsule().fill(ClientClay.accent).frame(height: 3).shadow(color: ClientClay.accent.opacity(0.28), radius: 5)
             HStack {
-                Label("Recupero", systemImage: "timer").font(.headline)
+                Label("Recupero", systemImage: "timer").font(.headline).foregroundStyle(ClientClay.accentSoft)
                 Spacer()
-                Text(formatted(timer.remainingSeconds(at: now))).font(.title2.monospacedDigit().weight(.bold))
+                Text(formatted(timer.remainingSeconds(at: now))).font(.title2.monospacedDigit().weight(.heavy)).foregroundStyle(ClientClay.ink)
             }
             HStack(spacing: 8) {
-                Button(timer.phase == .paused ? "Riprendi" : "Pausa") {
+                Button {
                     if timer.phase == .paused { session.resumeRestTimer() }
                     else { session.pauseRestTimer() }
-                }
-                Button("+30s") { session.adjustRestTimer(by: 30) }
+                } label: { Label(timer.phase == .paused ? "Riprendi" : "Pausa", systemImage: timer.phase == .paused ? "play.fill" : "pause.fill") }
+                Button("+30s") { session.adjustRestTimer(by: 30) }.monospacedDigit()
                 Button("Salta") { session.skipRestTimer() }
             }
+            .font(.subheadline.weight(.semibold))
             .buttonStyle(.bordered)
             .tint(ClientClay.accent)
         }
         .padding(14)
-        .background(ClientClay.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 18).stroke(ClientClay.accent.opacity(0.22)) }
-        .shadow(color: ClientClay.ink.opacity(0.12), radius: 12, y: 5)
+        .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 18).stroke(ClientClay.accent.opacity(0.34)) }
+        .shadow(color: .black.opacity(0.42), radius: 14, y: 7)
         .onReceive(ticker) { date in
             now = date
             if timer.phase == .running, timer.remainingSeconds(at: date) == 0 {
@@ -304,6 +328,8 @@ private struct ExerciseNoteSheet: View {
                 }
                 Section { Text("La nota riguarda solo questa esecuzione e non modifica la scheda del Trainer.").font(.footnote) }
             }
+            .scrollContentBackground(.hidden)
+            .background(ClientClay.canvas)
             .navigationTitle(exercise.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -337,6 +363,8 @@ private struct PostWorkoutSheet: View {
                 Section("Dolori o fastidi?") { Picker("Dolori o fastidi", selection: $hasPain) { Text("No").tag(false); Text("Sì").tag(true) }.pickerStyle(.segmented) }
                 Section("Vuoi aggiungere qualcosa?") { TextField("Nota facoltativa", text: $note, axis: .vertical).lineLimit(2...5) }
             }
+            .scrollContentBackground(.hidden)
+            .background(ClientClay.canvas)
             .navigationTitle("Com'è andata?")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
@@ -346,7 +374,7 @@ private struct PostWorkoutSheet: View {
                     onComplete()
                 } label: { Label("Salva e termina", systemImage: "checkmark") }
                     .buttonStyle(ClayPrimaryButtonStyle()).padding()
-                    .background(.ultraThinMaterial)
+                    .background(ClientClay.canvas.opacity(0.97))
             }
         }
     }
@@ -356,7 +384,7 @@ private struct PostWorkoutSheet: View {
             ForEach(1...5, id: \.self) { number in
                 Button { value.wrappedValue = number } label: {
                     Text("\(number)").font(.headline).frame(maxWidth: .infinity, minHeight: 44)
-                        .background(value.wrappedValue == number ? ClientClay.accent : ClientClay.surfaceDeep, in: RoundedRectangle(cornerRadius: 12))
+                        .background(value.wrappedValue == number ? ClientClay.accent : ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
                         .foregroundStyle(value.wrappedValue == number ? .white : ClientClay.ink)
                 }
                 .buttonStyle(.plain)

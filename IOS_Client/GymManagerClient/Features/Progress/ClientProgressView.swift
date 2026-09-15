@@ -8,6 +8,7 @@ struct ClientProgressView: View {
 
     @EnvironmentObject private var session: ClientSessionStore
     @EnvironmentObject private var healthKit: HealthKitStepService
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private struct MeasurementPoint: Identifiable {
         let id: String
@@ -80,6 +81,9 @@ struct ClientProgressView: View {
             VStack(alignment: .leading, spacing: 20) {
                 ClientPageTitle("Progressi", eyebrow: "La tua evoluzione", subtitle: "Trend e risultati reali, leggibili in un colpo d’occhio.")
                 progressHero
+                ClientSectionHeader(title: "Oggi", detail: "Attività quotidiana", symbol: "sun.max.fill")
+                todayStepsCard
+                ClientSectionHeader(title: "Riepilogo", detail: "Dati registrati", symbol: "square.grid.2x2.fill")
                 kpiGrid
                 weeklyWorkoutChart
 
@@ -95,7 +99,7 @@ struct ClientProgressView: View {
                     )
                 }
             }
-            .padding(20)
+            .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage()
         .navigationTitle("Progressi")
@@ -107,15 +111,36 @@ struct ClientProgressView: View {
         VStack(alignment: .leading, spacing: 15) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("PANORAMICA").font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.66))
-                    Text(heroTitle).font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(.white)
-                    Text(heroDetail).font(.subheadline).foregroundStyle(.white.opacity(0.72))
+                    Text(weights.isEmpty ? "PANORAMICA ATTIVITÀ" : "TENDENZA PESO")
+                        .font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.66))
+                    if let latest = weights.last, let value = latest.weightKg {
+                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                            Text(value.formatted(.number.precision(.fractionLength(1))))
+                                .font(.system(size: 46, weight: .heavy, design: .rounded)).monospacedDigit().foregroundStyle(.white)
+                            Text("kg").font(.headline).foregroundStyle(.white.opacity(0.62))
+                        }
+                        Text("Aggiornato il \(latest.recordedAt.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                    } else {
+                        Text(completedWorkouts + session.activity.runningResults.count, format: .number)
+                            .font(.system(size: 46, weight: .heavy, design: .rounded)).monospacedDigit().foregroundStyle(.white)
+                        Text("sessioni registrate · aggiungi una rilevazione per costruire il trend")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                    }
                 }
                 Spacer()
                 Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.title2.weight(.semibold)).foregroundStyle(ClientClay.accentSoft)
                     .frame(width: 50, height: 50)
                     .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            if let delta = recentWeightDelta {
+                ClientDirectionalBadge(
+                    text: "\(delta > 0 ? "+" : "")\(delta.formatted(.number.precision(.fractionLength(1)))) kg vs precedente",
+                    direction: abs(delta) < 0.05 ? nil : delta.sign
+                )
+            } else if weights.count == 1 {
+                ClientBadge(text: "Prima rilevazione", tint: ClientClay.inkSoft, symbol: "flag.fill")
             }
             HStack(spacing: 8) {
                 compactHeroMetric(value: "\(completedWorkouts)", label: "workout")
@@ -124,6 +149,13 @@ struct ClientProgressView: View {
             }
         }
         .premiumCard()
+    }
+
+    private var recentWeightDelta: Double? {
+        guard weights.count > 1,
+              let latest = weights.last?.weightKg,
+              let previous = weights.dropLast().last?.weightKg else { return nil }
+        return latest - previous
     }
 
     private var heroTitle: String {
@@ -153,25 +185,11 @@ struct ClientProgressView: View {
     }
 
     private var kpiGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ClientMetricTile(
-                title: "Peso attuale",
-                value: weights.last?.weightKg.map { "\($0.formatted()) kg" } ?? "—",
-                detail: weights.last?.recordedAt.formatted(date: .abbreviated, time: .omitted) ?? "Nessuna rilevazione",
-                symbol: "scalemass.fill",
-                tint: ClientClay.accent
-            )
-            ClientMetricTile(
-                title: "Passi oggi",
-                value: todaySteps?.formatted() ?? "—",
-                detail: todaySteps == nil ? "Apple Salute non collegata" : "Totale giornaliero",
-                symbol: "figure.walk",
-                tint: ClientClay.gold
-            )
+        LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             ClientMetricTile(
                 title: "Allenamenti",
                 value: completedWorkouts.formatted(),
-                detail: "Completati su questo iPhone",
+                detail: "Totale completati su questo iPhone",
                 symbol: "checkmark.seal.fill",
                 tint: ClientClay.sage
             )
@@ -182,7 +200,40 @@ struct ClientProgressView: View {
                 symbol: "figure.run",
                 tint: ClientClay.accent
             )
+            ClientMetricTile(
+                title: "Corse salvate",
+                value: session.activity.runningResults.count.formatted(),
+                detail: "Sessioni running registrate",
+                symbol: "figure.run.circle.fill",
+                tint: ClientClay.gold
+            )
+            ClientMetricTile(
+                title: "Rilevazioni",
+                value: entries.count.formatted(),
+                detail: "Peso e misure nel tempo",
+                symbol: "ruler.fill",
+                tint: ClientClay.accentSoft
+            )
         }
+    }
+
+    private var todayStepsCard: some View {
+        HStack(spacing: 18) {
+            ClientCircularProgress(
+                value: Double(todaySteps ?? 0), total: 10_000, title: "Passi oggi",
+                valueText: todaySteps?.formatted() ?? "—", detail: "di 10.000",
+                tint: todaySteps.map { $0 >= 10_000 ? ClientClay.sage : ClientClay.gold } ?? ClientClay.tertiaryInk,
+                size: 96
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("PASSI ODIERNI").font(.caption.weight(.bold)).tracking(1).foregroundStyle(ClientClay.gold)
+                Text(todaySteps == nil ? "Dato non disponibile" : "Movimento di oggi")
+                    .font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
+                Text(todaySteps == nil ? "Collega Apple Salute dalla Home." : source == .demo ? "Dati demo · nessun dato reale" : "Sincronizzati con Apple Salute")
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            }
+        }
+        .clayCard()
     }
 
     private var weeklyWorkoutChart: some View {
@@ -197,10 +248,12 @@ struct ClientProgressView: View {
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day)) { _ in
                     AxisValueLabel(format: .dateTime.weekday(.narrow))
+                        .foregroundStyle(ClientClay.secondaryInk)
                     AxisGridLine().foregroundStyle(.clear)
                 }
             }
             .chartYAxis(.hidden)
+            .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
             .frame(height: 130)
             .accessibilityLabel("Allenamenti completati negli ultimi sette giorni")
         }
@@ -212,11 +265,11 @@ struct ClientProgressView: View {
             ClientSectionHeader(title: "Andamento peso", detail: "kg", symbol: "scalemass.fill")
             if let latest = weights.last, let value = latest.weightKg {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(value.formatted()).font(.system(size: 38, weight: .bold, design: .rounded))
+                    Text(value.formatted()).font(.system(size: 38, weight: .heavy, design: .rounded)).monospacedDigit()
                     Text("kg").font(.headline).foregroundStyle(ClientClay.secondaryInk)
                     Spacer()
-                    if let deltaText = weightDeltaText {
-                        ClientBadge(text: deltaText, tint: ClientClay.accent, symbol: "arrow.left.and.right")
+                    if let delta = recentWeightDelta {
+                        ClientDirectionalBadge(text: weightDeltaText ?? "", direction: abs(delta) < 0.05 ? nil : delta.sign)
                     }
                 }
             }
@@ -227,11 +280,14 @@ struct ClientProgressView: View {
                             .foregroundStyle(LinearGradient(colors: [ClientClay.accent.opacity(0.3), ClientClay.accent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                         LineMark(x: .value("Data", entry.recordedAt), y: .value("Peso", value))
                             .foregroundStyle(ClientClay.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                            .interpolationMethod(.catmullRom)
                         PointMark(x: .value("Data", entry.recordedAt), y: .value("Peso", value))
                             .foregroundStyle(ClientClay.accent).symbolSize(48)
                     }
                 }
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)); AxisGridLine().foregroundStyle(.clear) } }
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).foregroundStyle(ClientClay.secondaryInk); AxisGridLine().foregroundStyle(.clear) } }
+                .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(ClientClay.border); AxisValueLabel().foregroundStyle(ClientClay.secondaryInk) } }
+                .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
                 .frame(height: 210)
                 .accessibilityLabel("Grafico andamento del peso")
             }
@@ -240,28 +296,35 @@ struct ClientProgressView: View {
     }
 
     private var weightDeltaText: String? {
-        guard let first = weights.first?.weightKg, let last = weights.last?.weightKg, weights.count > 1 else { return nil }
-        let delta = last - first
-        return "\(delta > 0 ? "+" : "")\(delta.formatted(.number.precision(.fractionLength(1)))) kg"
+        guard let delta = recentWeightDelta else { return nil }
+        return "\(delta > 0 ? "+" : "")\(delta.formatted(.number.precision(.fractionLength(1)))) kg vs precedente"
     }
 
     private var measurementsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             ClientSectionHeader(title: "Misure corporee", detail: "cm", symbol: "ruler.fill")
-            HStack(spacing: 10) {
-                measurementSummary(title: "Vita", value: latestWaist)
-                measurementSummary(title: "Fianchi", value: latestHips)
+            ViewThatFits {
+                HStack(spacing: 10) {
+                    measurementSummary(title: "Vita", value: latestWaist)
+                    measurementSummary(title: "Fianchi", value: latestHips)
+                }
+                VStack(spacing: 10) {
+                    measurementSummary(title: "Vita", value: latestWaist)
+                    measurementSummary(title: "Fianchi", value: latestHips)
+                }
             }
             if Set(measurements.map(\.date)).count > 1 {
                 Chart(measurements) { point in
                     LineMark(x: .value("Data", point.date), y: .value("Centimetri", point.value))
                         .foregroundStyle(by: .value("Misura", point.kind))
-                        .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                        .lineStyle(point.kind == "Vita" ? StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round) : StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round, dash: [5, 3]))
                     PointMark(x: .value("Data", point.date), y: .value("Centimetri", point.value))
                         .foregroundStyle(by: .value("Misura", point.kind))
                 }
                 .chartForegroundStyleScale(["Vita": ClientClay.accent, "Fianchi": ClientClay.sage])
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)); AxisGridLine().foregroundStyle(.clear) } }
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).foregroundStyle(ClientClay.secondaryInk); AxisGridLine().foregroundStyle(.clear) } }
+                .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(ClientClay.border); AxisValueLabel().foregroundStyle(ClientClay.secondaryInk) } }
+                .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
                 .frame(height: 200)
                 .accessibilityLabel("Grafico andamento delle misure corporee")
             }
@@ -276,7 +339,8 @@ struct ClientProgressView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ClientClay.surfaceDeep.opacity(0.62), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ClientClay.border) }
     }
 
     private var runningSection: some View {

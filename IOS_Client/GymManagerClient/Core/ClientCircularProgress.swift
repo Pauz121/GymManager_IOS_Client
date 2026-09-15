@@ -21,11 +21,12 @@ struct ClientCircularProgress: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(ClientClay.surfaceDeep, style: StrokeStyle(lineWidth: 11, lineCap: .round))
+                .stroke(ClientClay.surfaceElevated, style: StrokeStyle(lineWidth: 11, lineCap: .round))
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(tint, style: StrokeStyle(lineWidth: 11, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                .shadow(color: tint.opacity(progress > 0 ? 0.28 : 0), radius: 6)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: progress)
             VStack(spacing: 1) {
                 Text(valueText)
@@ -63,18 +64,19 @@ struct ClientCaloriePie: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(ClientClay.surfaceDeep)
+            Circle().fill(ClientClay.surfaceElevated)
             ClientPieSlice(progress: progress)
                 .fill(ClientClay.sage)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: progress)
-            Circle().stroke(.white.opacity(0.8), lineWidth: 2)
+            Circle().stroke(ClientClay.border, lineWidth: 1)
             VStack(spacing: 1) {
                 Text(valueText).font(.headline.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.7)
                 Text(detail).font(.caption2).foregroundStyle(ClientClay.secondaryInk).lineLimit(1)
             }
             .padding(8)
             .frame(width: size * 0.68, height: size * 0.68)
-            .background(.ultraThinMaterial, in: Circle())
+            .foregroundStyle(ClientClay.ink)
+            .background(ClientClay.surface, in: Circle())
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)

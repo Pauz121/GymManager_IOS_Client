@@ -16,9 +16,9 @@ struct ClientAccountView: View {
             VStack(alignment: .leading, spacing: 18) {
                 ClientPageTitle("Account", eyebrow: "Profilo e sicurezza", subtitle: "Le tue informazioni e lo stato del percorso.")
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
+                    HStack(spacing: 14) {
                         ClientProfileAvatar(image: avatarStore.image(for: identity.authUserID), initials: initials)
-                        VStack(alignment: .leading) { Text(identity.displayName).font(.title2.weight(.bold)); Text(identity.email ?? identity.username).font(.subheadline).foregroundStyle(ClientClay.secondaryInk) }
+                        VStack(alignment: .leading) { Text(identity.displayName).font(.title2.weight(.heavy)).foregroundStyle(.white); Text(identity.email ?? identity.username).font(.subheadline).foregroundStyle(.white.opacity(0.68)) }
                     }
                     PhotosPicker(selection: $selectedPhoto, matching: .images) {
                         Label(avatarStore.image(for: identity.authUserID) == nil ? "Aggiungi foto profilo" : "Cambia foto profilo", systemImage: "photo.badge.plus")
@@ -34,9 +34,9 @@ struct ClientAccountView: View {
                         .font(.subheadline.weight(.semibold))
                     }
                     Text("La foto resta protetta su questo iPhone e non viene caricata sul profilo online.")
-                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        .font(.caption).foregroundStyle(.white.opacity(0.66))
                     ClientBadge(text: identity.mode == .trainerConnected ? "Cliente seguito" : "Account personale", tint: identity.mode == .trainerConnected ? ClientClay.sage : ClientClay.warning)
-                }.clayCard()
+                }.premiumCard(tint: identity.mode == .trainerConnected ? ClientClay.sage : ClientClay.accent)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text(identity.mode == .trainerConnected ? "Il mio Trainer" : "Collega un Trainer").font(.title3.weight(.bold))
@@ -45,7 +45,7 @@ struct ClientAccountView: View {
                         Label("Il collegamento è protetto e non può essere rimosso dall’app.", systemImage: "lock.shield").font(.footnote).foregroundStyle(ClientClay.secondaryInk)
                     } else {
                         Text("Hai ricevuto un codice? Il servizio di attivazione sicura arriverà nella Fase 2.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                        TextField("Codice Trainer", text: $trainerCode).textFieldStyle(.roundedBorder).textInputAutocapitalization(.characters)
+                        TextField("Codice Trainer", text: $trainerCode).clientInputField().textInputAutocapitalization(.characters)
                         Button("Collega il mio Trainer") {}.buttonStyle(ClaySecondaryButtonStyle()).disabled(true)
                         Text("Nessun codice viene inviato o consumato.").font(.caption).foregroundStyle(ClientClay.secondaryInk)
                     }
@@ -54,8 +54,8 @@ struct ClientAccountView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Sicurezza").font(.title3.weight(.bold))
                     if source == .live {
-                        SecureField("Nuova password", text: $password).textContentType(.newPassword).textFieldStyle(.roundedBorder)
-                        SecureField("Conferma password", text: $confirmation).textContentType(.newPassword).textFieldStyle(.roundedBorder)
+                        SecureField("Nuova password", text: $password).textContentType(.newPassword).clientInputField()
+                        SecureField("Conferma password", text: $confirmation).textContentType(.newPassword).clientInputField()
                         Button("Aggiorna password") {
                             guard password == confirmation else { session.notice = "Le password non coincidono."; return }
                             Task { await session.updatePassword(password); password = ""; confirmation = "" }
@@ -70,7 +70,7 @@ struct ClientAccountView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Preferenze").font(.title3.weight(.bold))
                     LabeledContent("Unità di misura", value: "kg · cm")
-                    LabeledContent("Aspetto", value: "Chiaro")
+                    LabeledContent("Aspetto", value: "Scuro performance")
                     LabeledContent("Notifiche", value: "Fase 2")
                 }.clayCard()
 
@@ -84,7 +84,7 @@ struct ClientAccountView: View {
 
                 Button(role: .destructive) { Task { await session.signOut() } } label: { Label("Esci dal mio account", systemImage: "rectangle.portrait.and.arrow.right") }
                     .buttonStyle(ClaySecondaryButtonStyle())
-            }.padding(20)
+            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage().navigationTitle("Account").navigationBarTitleDisplayMode(.inline)
         .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }

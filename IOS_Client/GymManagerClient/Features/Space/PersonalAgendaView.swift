@@ -27,7 +27,9 @@ struct PersonalAgendaView: View {
                             }
                             Spacer()
                             Button(role: .destructive) { session.deleteAgendaTask(task.id) } label: { Image(systemName: "trash") }.accessibilityLabel("Elimina \(task.title)")
-                        }.clayCard(padding: 15)
+                        }
+                        .clayCard(padding: 15)
+                        .overlay { RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous).stroke(task.isCompleted ? ClientClay.sage.opacity(0.30) : ClientClay.border) }
                     }
                 }
 
@@ -44,7 +46,7 @@ struct PersonalAgendaView: View {
                         }.clayCard()
                     }
                 }
-            }.padding(20)
+            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage().navigationTitle("Agenda").navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingComposer) { PersonalAgendaComposer() }
@@ -79,6 +81,8 @@ private struct PersonalAgendaComposer: View {
                 }
                 Section { Text("Questa voce resta locale e non viene inviata al Trainer.").font(.footnote).foregroundStyle(.secondary) }
             }
+            .scrollContentBackground(.hidden)
+            .background(ClientClay.canvas)
             .navigationTitle("Nuova attività").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }

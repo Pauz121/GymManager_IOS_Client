@@ -2,6 +2,41 @@
 
 Date: 2026-09-13
 
+## Global dark premium visual redesign — 2026-09-15
+
+The native Client app now uses one centralized dark fitness/performance visual system while preserving the existing functional architecture, navigation, local activity state, HealthKit, Core Location, ActivityKit and Supabase read boundaries.
+
+### Visual system
+
+- `ClientClay` remains the project convention but now supplies layered charcoal canvas/surfaces, high-contrast typography, a controlled red-orange brand gradient, semantic green completion, muted secondary text, shared borders, page spacing and inset surfaces.
+- Standard cards use dark layered surfaces, restrained internal highlights and black depth shadows. Premium cards reserve accent glow for hero/active states. Buttons, numeric fields, progress rings, segmented progress, metric tiles and neutral directional delta badges are reusable primitives rather than page-local constants.
+- The app is intentionally dark-first via `.preferredColorScheme(.dark)`. No backend or functional behavior depends on this choice.
+
+### Navigation and screens
+
+- The five existing `TabView` destinations remain unchanged. A safe-area-aware elevated bottom bar now provides a stronger selected state and preserves the locally stored profile avatar in `Spazio`.
+- Home keeps steps immediately below the greeting, now inside the dominant daily hero with real HealthKit/demo state and workout/meal/Agenda status. Workout remains the principal CTA. The full quick meal list remains available, with per-meal calories and segmented completion.
+- Workout uses a stronger plan/today hierarchy, a custom Palestra/Corsa selector, visible current/completed states, dark keyboard-safe set inputs and a non-blocking recovery dock. Completed sets remain readable and every plan session/exercise remains consultable.
+- Nutrition highlights the real current day, provides a horizontal selector containing exactly the plan's days, preserves today-only completion and adapts honestly when calories are missing. Meal foods emphasize name, amount and optional calories without placeholder nutrition values.
+- Progress separates today's HealthKit steps from cumulative activity, uses the latest real weight as the hero when available, compares only against the previous measurement, treats weight direction neutrally and integrates workout/weight/measurement charts into dark surfaces. No body-fat, lean-mass or step-history metric was added.
+- Onboarding, Agenda, Updates, Account and Running use the same surfaces, spacing, fields, buttons and contrast. Running map, route replay, GPS metrics, background behavior and finish logic are unchanged.
+
+### Gemini UI collaboration
+
+- Home attempt `GYM-IOS-DARK-HOME-20260915-001`: real call, FAILED_PERMISSION because headless `read_file/ListDir` was auto-denied; response absent, files changed none, Codex rejected it.
+- Home retry `GYM-IOS-DARK-HOME-20260915-002`: SUCCESS, usable. Codex accepted dark hierarchy/tokens/accessibility but kept steps at the top and all quick meals, and rejected unavailable distance/duration data.
+- Workout `GYM-IOS-DARK-WORKOUT-20260915-001`: SUCCESS, usable. Codex accepted the hub/execution hierarchy, legible state system, input ergonomics and timer dock; no persisted timer percentage or hidden/collapsed exercise behavior was introduced.
+- Nutrition `GYM-IOS-DARK-NUTRITION-20260915-001`: SUCCESS, usable. Codex accepted the current-day hero, real-day strip, optional-calorie fallback and meal hierarchy; invented meal times/macros were rejected.
+- Progress `GYM-IOS-DARK-PROGRESS-20260915-001`: SUCCESS, usable. Codex accepted temporal separation, neutral deltas and chart treatment; global filters and unavailable metrics were rejected.
+- All successful calls returned provider SUCCESS, exit code 0, a distinct conversation ID, no denied action and no file modification. Codex implemented and reviewed the accepted parts.
+
+### Validation status
+
+- Windows static source/project validator: PASS, 73/73 checks, including dark tokens, premium navigation, adaptive Home, Workout active/input state, Nutrition day selector and neutral Progress charts.
+- Semantic comparison with the last dedicated iOS Client publication snapshot: exactly 18 modified files, all limited to Client UI, this report and the Client validation script; no unexpected file, deletion or dependency change.
+- Xcode build/XCTest, simulator screenshots, VoiceOver, Dynamic Type and physical-device validation remain unavailable on this Windows host and must be run on macOS.
+- Database, migration, RLS, Supabase data, permissions, Desktop and Trainer iOS changes: NONE.
+
 ## Premium UX and HealthKit alignment — 2026-09-14
 
 - Daily steps now use one `HKStatisticsQuery` with `.cumulativeSum` over the current local calendar day. HealthKit performs its normal multi-source merge, so the app does not manually add overlapping iPhone, Apple Watch or third-party samples. The value refreshes on Home appearance, foreground activation, pull-to-refresh and every 60 seconds while Home remains visible. The last refresh time is shown.

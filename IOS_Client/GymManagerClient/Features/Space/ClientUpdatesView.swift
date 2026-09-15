@@ -12,7 +12,8 @@ struct ClientUpdatesView: View {
                 } else {
                     ForEach(updates) { update in
                         HStack(alignment: .top, spacing: 14) {
-                            Image(systemName: symbol(for: update.kind)).font(.title2).foregroundStyle(ClientClay.accent).frame(width: 34)
+                            Image(systemName: symbol(for: update.kind)).font(.title3.weight(.semibold)).foregroundStyle(ClientClay.accent)
+                                .frame(width: 42, height: 42).background(ClientClay.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(update.date.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(ClientClay.secondaryInk)
                                 Text(update.title).font(.headline)
@@ -21,7 +22,7 @@ struct ClientUpdatesView: View {
                         }.clayCard()
                     }
                 }
-            }.padding(20)
+            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }.clientPage().navigationTitle("Aggiornamenti").navigationBarTitleDisplayMode(.inline)
     }
 
