@@ -97,6 +97,7 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertNil(ClientRegistrationValidation.stepOneIssue(for: input))
         XCTAssertEqual(ClientRegistrationValidation.normalizedEmail("  MARIO@EXAMPLE.COM "), "mario@example.com")
         XCTAssertEqual(ClientRegistrationValidation.normalizedName("  Mario  "), "Mario")
+        XCTAssertEqual(ClientRegistrationValidation.normalizedUsername("  Mario.Rossi "), "mario.rossi")
     }
 
     func testRegistrationRejectsInvalidUsernameBeforeAuth() {

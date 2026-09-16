@@ -102,10 +102,21 @@ struct TrainerCodeService: TrainerCodeActivating {
             throw ClientAppError.message("Inserisci un codice GymManager valido.")
         }
 
+        let accessToken: String
+        do {
+            let session = try await ClientSupabaseProvider.client.auth.session
+            accessToken = session.accessToken
+        } catch {
+            throw ClientAppError.message("Sessione Cliente non valida. Accedi di nuovo prima di usare il codice Trainer.")
+        }
+
         do {
             let result: TrainerCodeActivationResult = try await ClientSupabaseProvider.client.functions.invoke(
                 "redeem-client-link-code",
-                options: FunctionInvokeOptions(body: ["code": normalizedCode])
+                options: FunctionInvokeOptions(
+                    headers: ["Authorization": "Bearer \(accessToken)"],
+                    body: ["code": normalizedCode]
+                )
             )
             return result
         } catch FunctionsError.httpError(_, let data) {

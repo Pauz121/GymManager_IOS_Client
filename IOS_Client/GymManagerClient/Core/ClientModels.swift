@@ -46,7 +46,7 @@ enum ClientRegistrationValidation {
     }
 
     static func normalizedUsername(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     static func stepOneIssue(for input: ClientRegistrationInput) -> ClientRegistrationIssue? {

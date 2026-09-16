@@ -111,8 +111,10 @@ final class ClientSessionStore: ObservableObject {
                 registrationIssue = ClientRegistrationIssue(field: .password, message: "La password non rispetta i requisiti di sicurezza.")
             } else if message.contains("email") && (message.contains("registered") || message.contains("already")) {
                 registrationIssue = ClientRegistrationIssue(field: .form, message: "Esiste già un account con questa email.")
-            } else if message.contains("username") || message.contains("database error saving new user") {
+            } else if message.contains("username") {
                 registrationIssue = ClientRegistrationIssue(field: .form, message: "Email o username già utilizzati.")
+            } else if message.contains("database error saving new user") {
+                registrationIssue = ClientRegistrationIssue(field: .form, message: "Il backend non ha completato la creazione del profilo Cliente. Riprova più tardi.")
             } else {
                 registrationIssue = ClientRegistrationIssue(field: .form, message: "Registrazione non riuscita. Riprova tra poco.")
             }
