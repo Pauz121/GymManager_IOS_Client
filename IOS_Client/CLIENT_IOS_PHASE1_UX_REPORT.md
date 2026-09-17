@@ -226,3 +226,33 @@ The supplied `img/logo.png` is installed as the Client AppIcon through a 1024×1
 ## Next phase
 
 On macOS: resolve packages, build, run all XCTest cases, test both Debug personas in simulator, then test HealthKit and Running on a physical iPhone. Separately design and approve a non-destructive backend/RLS contract if Trainer-visible workout, meal or running logs are required.
+
+## Standalone full mode update — 2026-09-17
+
+- Home uses active personal workout/nutrition data when no professional plan exists and routes zero-state CTAs to real creation flows.
+- Workout exposes Attività, Palestra, Corsa and Riepilogo for every Client. Corsa is no longer gated by a Trainer capability or assigned plan.
+- Personal workout plans support create, edit, duplicate, activate/archive/delete; sessions support order, weekday and exercises; exercise prescriptions include sets, reps, recovery, load, RIR/RPE and notes. Execution reuses the existing set logger, rest timer and post-workout flow.
+- Exercise picker queries only the global/system catalog; private Trainer exercises are not exposed. A personal exercise can be embedded privately in the Client plan.
+- Personal Nutrition supports plan/day/meal/food creation, quantities, deletion, meal duplication, real calorie calculation and personal meal templates. Food search reuses global `food_references` from CREA/USDA/OFF cache.
+- Trainer plans remain structurally read-only and visibly separated from personal content. Linking a Trainer does not overwrite personal rows because ownership is `owner_user_id = auth.uid()` and origin is `self_created`.
+- Running keeps the existing GPS/map/splits/PB/Top 3/replay/Live Activity engine, adds permanent entry and Mese/3M/6M/Anno history filters. Completed runs are prepared for backend sync.
+- Check Studio Client contract now includes Trainer display name, type, shared notes, state, start/end and duration. Internal Trainer notes are not introduced.
+
+### Gemini review
+
+- Delegation `GYM-IOS-STANDALONE-UX-20260917-001`: SUCCESS, conversation `02d0accc-523c-4dbf-b511-61363866dcee`, no files changed.
+- Codex review: ACCEPTED WITH MODIFICATIONS. Accepted hierarchy, Trainer/Personal separation, bottom-reachable CTAs, sheet pickers and permanent Running; rejected a new lime/cyan palette and unsupported offline-sync claims.
+
+### Database / RLS
+
+- Migration source: `Desktop/supabase/migrations/20260917170000_client_personal_content.sql`.
+- Creates private personal workout/nutrition plans, exercises, meal templates and running sessions with owner-user indexes and RLS.
+- Adds read-only Client policies for global exercises/foods and the linked Trainer identity.
+- CREATED: YES. APPLIED LOCAL: NO. APPLIED PRODUCTION: NO.
+- Until migration application, the app retains a user-namespaced device cache and reports remote synchronization as unavailable; no silent data loss occurs.
+
+### Validation
+
+- Static iOS validation: PASS, 118/118.
+- Native XCTest definitions include personal plan conversion, quantity calorie math and user-isolated personal storage.
+- Xcode build/XCTest: NOT AVAILABLE ON WINDOWS; mandatory on Mac before device distribution.

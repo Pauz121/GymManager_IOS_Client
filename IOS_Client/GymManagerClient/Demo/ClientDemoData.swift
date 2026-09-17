@@ -130,7 +130,7 @@ enum ClientDemoData {
         return ClientSnapshot(
             workout: workout,
             nutrition: nutrition,
-            appointments: [ClientAppointment(id: UUID(), title: "Check mensile", startsAt: now.addingTimeInterval(172_800), endsAt: now.addingTimeInterval(176_400), location: "Studio GymManager")],
+            appointments: [ClientAppointment(id: UUID(), title: "Check mensile", startsAt: now.addingTimeInterval(172_800), endsAt: now.addingTimeInterval(176_400), location: "Studio GymManager", appointmentType: "classic_check", notes: "Porta le ultime misurazioni.", status: "scheduled", trainerName: "Trainer Demo")],
             progress: [
                 ClientProgressEntry(id: UUID(), recordedAt: now.addingTimeInterval(-10_368_000), weightKg: 80.2, waistCm: 87, hipsCm: 100),
                 ClientProgressEntry(id: UUID(), recordedAt: now.addingTimeInterval(-7_776_000), weightKg: 79.5, waistCm: 86, hipsCm: 99.5),

@@ -11,14 +11,23 @@ struct ClientHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var presentedWorkout: ClientWorkoutSession?
 
+    private var activeWorkoutPlan: ClientWorkoutPlan? {
+        snapshot.workout ?? session.personalContent.activeWorkout?.asClientPlan()
+    }
+
+    private var activeNutritionPlan: ClientNutritionPlan? {
+        snapshot.nutrition ?? session.personalContent.activeNutrition?.asClientPlan()
+    }
+
     private var todayWorkout: ClientWorkoutSession? {
-        guard let id = snapshot.workout?.todaySessionID else { return nil }
-        return snapshot.workout?.sessions.first { $0.id == id }
+        guard let plan = activeWorkoutPlan else { return nil }
+        if let id = plan.todaySessionID { return plan.sessions.first { $0.id == id } }
+        return identity.mode == .standalone ? plan.sessions.first : nil
     }
 
     private var todayNutrition: ClientNutritionDay? {
-        snapshot.nutrition?.days.first { $0.weekday == ClientDateLogic.weekday(for: Date()) }
-            ?? (snapshot.nutrition?.days.count == 1 ? snapshot.nutrition?.days.first : nil)
+        activeNutritionPlan?.days.first { $0.weekday == ClientDateLogic.weekday(for: Date()) }
+            ?? (activeNutritionPlan?.days.count == 1 ? activeNutritionPlan?.days.first : nil)
     }
 
     private var homeAgendaTasks: [PersonalAgendaTask] {
@@ -80,7 +89,7 @@ struct ClientHomeView: View {
             Task { await healthKit.refreshIfPreviouslyRequested() }
         }
         .fullScreenCover(item: $presentedWorkout) { workout in
-            if let plan = snapshot.workout {
+            if let plan = activeWorkoutPlan {
                 ClientWorkoutExecutionView(plan: plan, workoutSession: workout)
             }
         }
@@ -146,7 +155,7 @@ struct ClientHomeView: View {
     }
 
     @ViewBuilder private var workoutCard: some View {
-        if let plan = snapshot.workout, let workout = todayWorkout {
+        if let plan = activeWorkoutPlan, let workout = todayWorkout {
             let execution = session.workoutExecution(sessionID: workout.id)
             VStack(alignment: .leading, spacing: 13) {
                 HStack {
@@ -177,7 +186,7 @@ struct ClientHomeView: View {
                 }
             }
             .clayCard()
-        } else if snapshot.workout != nil {
+        } else if activeWorkoutPlan != nil {
             ClientEmptyState(symbol: "moon.zzz", title: "Oggi riposo", message: "Nessun allenamento è programmato per oggi.")
         } else {
             ClientEmptyState(
@@ -189,7 +198,7 @@ struct ClientHomeView: View {
     }
 
     @ViewBuilder private var nutritionCard: some View {
-        if let nutrition = snapshot.nutrition, let day = todayNutrition, !day.meals.isEmpty {
+        if let nutrition = activeNutritionPlan, let day = todayNutrition, !day.meals.isEmpty {
             let completed = day.meals.filter { session.activity.isMealCompleted($0.id) }.count
             let completedCalories = day.meals
                 .filter { session.activity.isMealCompleted($0.id) }
@@ -346,9 +355,10 @@ struct ClientHomeView: View {
     private var standaloneActions: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Il tuo spazio autonomo").font(.title3.weight(.bold))
-            action("Crea il tuo piano allenamento", symbol: "dumbbell")
-            action("Crea il tuo piano alimentare", symbol: "leaf")
-            action("Registra un progresso", symbol: "chart.line.uptrend.xyaxis")
+            Button { selectedTab = .workout } label: { Label(session.personalContent.workoutPlans.isEmpty ? "Crea il tuo piano allenamento" : "Apri le tue schede", systemImage: "dumbbell") }.buttonStyle(ClaySecondaryButtonStyle())
+            Button { selectedTab = .nutrition } label: { Label(session.personalContent.nutritionPlans.isEmpty ? "Crea il tuo piano alimentare" : "Apri la tua alimentazione", systemImage: "leaf") }.buttonStyle(ClaySecondaryButtonStyle())
+            Button { selectedTab = .workout } label: { Label("Avvia una corsa", systemImage: "figure.run") }.buttonStyle(ClaySecondaryButtonStyle())
+            Button { selectedTab = .progress } label: { Label("Registra un progresso", systemImage: "chart.line.uptrend.xyaxis") }.buttonStyle(ClaySecondaryButtonStyle())
             Button { selectedTab = .space } label: { Label("Agenda", systemImage: "checklist") }
                 .buttonStyle(ClaySecondaryButtonStyle())
             Button { selectedTab = .space } label: { Label("Hai un codice Trainer?", systemImage: "link") }
@@ -357,20 +367,16 @@ struct ClientHomeView: View {
         .clayCard()
     }
 
-    private func action(_ title: String, symbol: String) -> some View {
-        Button { session.notice = "Questa funzione sarà disponibile nella prossima fase." } label: {
-            Label(title, systemImage: symbol)
-        }
-        .buttonStyle(ClaySecondaryButtonStyle())
-    }
-
     @ViewBuilder private var contextCards: some View {
         if identity.mode == .trainerConnected, let next = snapshot.appointments.first {
             VStack(alignment: .leading, spacing: 8) {
                 ClientBadge(text: "Fissato dal Trainer", tint: ClientClay.accent, symbol: "calendar.badge.clock")
                 Text(next.title).font(.headline)
-                Text(next.startsAt.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(ClientClay.secondaryInk)
+                Text([next.trainerName, next.appointmentType?.replacingOccurrences(of: "_", with: " ")].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
+                Text("\(next.startsAt.formatted(date: .abbreviated, time: .shortened)) · \(max(1, Int(next.endsAt.timeIntervalSince(next.startsAt) / 60))) min").foregroundStyle(ClientClay.secondaryInk)
                 if let location = next.location { Label(location, systemImage: "mappin.and.ellipse").font(.subheadline) }
+                if let notes = next.notes, !notes.isEmpty { Text(notes).font(.caption).foregroundStyle(ClientClay.secondaryInk) }
             }
             .clayCard()
         }

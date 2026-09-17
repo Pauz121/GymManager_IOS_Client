@@ -117,6 +117,46 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertEqual(ClientRegistrationValidation.stepTwoIssue(for: input)?.field, .passwordConfirmation)
     }
 
+    func testRegistrationErrorClassifierUsesServerWeakPasswordCode() {
+        let issue = ClientRegistrationErrorClassifier.issue(
+            message: "Server validation failed",
+            code: "weak_password",
+            status: 422
+        )
+        XCTAssertEqual(issue.field, .password)
+        XCTAssertTrue(issue.message.contains("12 caratteri"))
+    }
+
+    func testRegistrationErrorClassifierDistinguishesDuplicateEmail() {
+        let issue = ClientRegistrationErrorClassifier.issue(
+            message: "User already registered",
+            code: "user_already_exists",
+            status: 422
+        )
+        XCTAssertEqual(issue.field, .form)
+        XCTAssertTrue(issue.message.contains("email"))
+    }
+
+    func testRegistrationErrorClassifierDistinguishesDuplicateUsername() {
+        let issue = ClientRegistrationErrorClassifier.issue(
+            message: "Database error saving new user: client_username_unavailable",
+            code: "unexpected_failure",
+            status: 500
+        )
+        XCTAssertEqual(issue.field, .username)
+        XCTAssertTrue(issue.message.contains("username"))
+    }
+
+    func testRegistrationErrorClassifierExplainsEmailConfirmation() {
+        let issue = ClientRegistrationErrorClassifier.issue(
+            message: "Email not confirmed",
+            code: "email_not_confirmed",
+            status: 400
+        )
+        XCTAssertEqual(issue.field, .form)
+        XCTAssertTrue(issue.message.contains("confermata"))
+    }
+
     func testMondayUsesBackendWeekdayOne() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -470,6 +510,69 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertTrue(grouped.values.contains { items in
             items.contains(where: { $0.kind == .gym }) && items.contains(where: { $0.kind == .running })
         })
+    }
+
+    func testPersonalWorkoutConvertsToExecutableClientPlan() {
+        let exercise = ClientPersonalExercise(
+            id: UUID(), catalogExerciseID: UUID(), name: "Squat", muscleGroup: "Gambe",
+            sets: 4, repetitions: "8", restSeconds: 120, loadKg: 80,
+            effortTarget: "RIR 2", notes: "Controlla la discesa", videoURL: nil
+        )
+        let session = ClientPersonalWorkoutSession(id: UUID(), name: "Lower", weekday: 2, exercises: [exercise])
+        let plan = ClientPersonalWorkoutPlan(id: UUID(), title: "Forza", status: .active, sessions: [session], createdAt: Date(), updatedAt: Date())
+        let converted = plan.asClientPlan()
+        XCTAssertEqual(converted.sessions.first?.exercises.first?.setCount, 4)
+        XCTAssertEqual(converted.sessions.first?.exercises.first?.restSeconds, 120)
+        XCTAssertTrue(converted.sessions.first?.exercises.first?.notes?.contains("RIR 2") == true)
+    }
+
+    func testPersonalNutritionUsesRealQuantityCalories() {
+        let food = ClientPersonalFood(
+            id: UUID(), catalogFoodID: UUID(), name: "Riso", quantityGrams: 150,
+            caloriesPer100g: 350, proteinPer100g: 7, carbsPer100g: 78, fatPer100g: 1
+        )
+        XCTAssertEqual(food.calories, 525, accuracy: 0.001)
+        let meal = ClientPersonalMeal(id: UUID(), name: "Pranzo", foods: [food])
+        XCTAssertEqual(meal.calories, 525, accuracy: 0.001)
+        XCTAssertEqual(meal.protein, 10.5, accuracy: 0.001)
+        XCTAssertEqual(meal.carbs, 117, accuracy: 0.001)
+        XCTAssertEqual(meal.fat, 1.5, accuracy: 0.001)
+    }
+
+    func testPersonalContentMergeKeepsNewestAndNeverDropsLocalOnlyPlans() {
+        let sharedID = UUID()
+        let localOnly = ClientPersonalWorkoutLibraryView.newPlan()
+        let older = Date(timeIntervalSince1970: 100)
+        let newer = Date(timeIntervalSince1970: 200)
+        let localShared = ClientPersonalWorkoutPlan(
+            id: sharedID, title: "Versione locale", status: .active, sessions: [],
+            createdAt: older, updatedAt: newer
+        )
+        let remoteShared = ClientPersonalWorkoutPlan(
+            id: sharedID, title: "Versione remota", status: .draft, sessions: [],
+            createdAt: older, updatedAt: older
+        )
+        let local = ClientPersonalContentState(workoutPlans: [localOnly, localShared], nutritionPlans: [], mealTemplates: [])
+        let remote = ClientPersonalContentState(workoutPlans: [remoteShared], nutritionPlans: [], mealTemplates: [])
+
+        let merged = local.merging(remote)
+
+        XCTAssertEqual(merged.workoutPlans.count, 2)
+        XCTAssertEqual(merged.workoutPlans.first(where: { $0.id == sharedID })?.title, "Versione locale")
+        XCTAssertTrue(merged.workoutPlans.contains(where: { $0.id == localOnly.id }))
+    }
+
+    func testPersonalContentStorageIsNamespacedAndSurvivesConnectionModeChanges() throws {
+        let suite = "ClientPersonalContentTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ClientPersonalContentStore(defaults: defaults)
+        let user = UUID()
+        let plan = ClientPersonalWorkoutLibraryView.newPlan()
+        let state = ClientPersonalContentState(workoutPlans: [plan], nutritionPlans: [], mealTemplates: [])
+        try store.save(state, userID: user)
+        XCTAssertEqual(store.load(userID: user).activeWorkout?.id, plan.id)
+        XCTAssertTrue(store.load(userID: UUID()).workoutPlans.isEmpty)
     }
 
     private func route(distanceMeters: Double, duration: TimeInterval) -> [ClientRoutePoint] {

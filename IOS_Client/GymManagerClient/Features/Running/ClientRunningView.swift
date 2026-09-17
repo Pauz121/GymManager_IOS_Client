@@ -7,6 +7,11 @@ private enum RunningMetricMode: String, CaseIterable {
     case speed = "km/h"
 }
 
+private enum RunningHistoryPeriod: String, CaseIterable {
+    case month = "Mese", threeMonths = "3M", sixMonths = "6M", year = "Anno"
+    var months: Int { switch self { case .month: 1; case .threeMonths: 3; case .sixMonths: 6; case .year: 12 } }
+}
+
 struct ClientRunningView: View {
     let plan: ClientRunningPlan
     @EnvironmentObject private var session: ClientSessionStore
@@ -14,6 +19,7 @@ struct ClientRunningView: View {
     @State private var showingRunner = false
     @State private var selectedResult: ClientRunningResult?
     @State private var selectedTarget: ClientRunningTarget?
+    @State private var historyPeriod: RunningHistoryPeriod = .threeMonths
 
     private var activeRun: ClientRunningExecution? {
         guard session.activity.activeRun?.planID == plan.id else { return nil }
@@ -44,8 +50,8 @@ struct ClientRunningView: View {
             personalBestSection
 
             if !results.isEmpty {
-                Text("Le tue corse").font(.title3.weight(.bold))
-                ForEach(results.prefix(5)) { result in
+                HStack { Text("Le tue corse").font(.title3.weight(.bold)); Spacer(); Picker("Periodo storico", selection: $historyPeriod) { ForEach(RunningHistoryPeriod.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu) }
+                ForEach(filteredResults) { result in
                     Button { selectedResult = result } label: { historyRow(result) }
                         .buttonStyle(.plain)
                         .accessibilityHint("Apre percorso e dati finali")
@@ -67,6 +73,11 @@ struct ClientRunningView: View {
 
     private var results: [ClientRunningResult] {
         session.activity.runningResults.sorted { $0.completedAt > $1.completedAt }
+    }
+
+    private var filteredResults: [ClientRunningResult] {
+        let threshold = Calendar.current.date(byAdding: .month, value: -historyPeriod.months, to: Date()) ?? .distantPast
+        return results.filter { $0.completedAt >= threshold }
     }
 
     private var personalBestSection: some View {

@@ -237,12 +237,32 @@ struct ClientEmailConfirmationView: View {
                 ClientPageTitle("Controlla la tua email", eyebrow: "Account creato", subtitle: "Abbiamo inviato il link di verifica a \(email). Dopo la conferma potrai accedere.")
                     .multilineTextAlignment(.center)
                 Spacer()
+                if session.canResumePendingRegistration {
+                    Button {
+                        Task { await session.resumePendingRegistrationAfterEmailConfirmation() }
+                    } label: {
+                        if session.isSubmitting {
+                            HStack(spacing: 10) {
+                                ProgressView().tint(.white)
+                                Text("Verifica account…")
+                            }
+                        } else {
+                            Text("Ho confermato l’email")
+                        }
+                    }
+                    .buttonStyle(ClayPrimaryButtonStyle())
+                    .disabled(session.isSubmitting)
+                    Text("La password resta solo nella memoria temporanea dell’app e non viene salvata.")
+                        .font(.caption)
+                        .foregroundStyle(ClientClay.secondaryInk)
+                        .multilineTextAlignment(.center)
+                }
                 NavigationLink {
                     ClientSignInView(prefilledIdentifier: email)
                 } label: {
-                    Text("Accedi dopo la conferma")
+                    Text(session.canResumePendingRegistration ? "Accedi manualmente" : "Accedi dopo la conferma")
                 }
-                .buttonStyle(ClayPrimaryButtonStyle())
+                .buttonStyle(ClaySecondaryButtonStyle())
                 Button("Torna alla schermata iniziale") { session.showOnboarding() }
                     .buttonStyle(ClaySecondaryButtonStyle())
             }

@@ -25,8 +25,13 @@ struct ClientWorkoutView: View {
     @State private var category: Category = .activity
 
     private var plan: ClientWorkoutPlan? { snapshot.workout }
-    private var availableCategories: [Category] {
-        Category.allCases.filter { $0 != .running || (snapshot.capabilities.runningEnabled && snapshot.runningPlan != nil) }
+    private var availableCategories: [Category] { Category.allCases }
+    private var runningPlan: ClientRunningPlan {
+        snapshot.runningPlan ?? ClientRunningPlan(
+            id: UUID(uuidString: "F1700000-0000-0000-0000-000000000001")!,
+            title: "Corsa libera", detail: "Registra distanza, tempo, passo e velocità.",
+            targetMinutes: nil, targetDistanceKm: nil
+        )
     }
     private var todayWorkout: ClientWorkoutSession? {
         guard let id = plan?.todaySessionID else { return nil }
@@ -54,7 +59,7 @@ struct ClientWorkoutView: View {
                 case .gym:
                     gymContent
                 case .running:
-                    if let runningPlan = snapshot.runningPlan { ClientRunningView(plan: runningPlan) }
+                    ClientRunningView(plan: runningPlan)
                 case .recap:
                     ClientActivityRecapView(snapshot: snapshot)
                 }
@@ -157,13 +162,10 @@ struct ClientWorkoutView: View {
                     .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     .clayCard(padding: 14)
             }
-        } else {
-            ClientEmptyState(
-                symbol: "dumbbell",
-                title: "Nessun piano pubblicato",
-                message: identity.mode == .standalone ? "Puoi collegare un Trainer; i piani personali arriveranno nella prossima fase." : "Il tuo Trainer non ha ancora pubblicato una scheda attiva."
-            )
+        } else if identity.mode == .trainerConnected {
+            ClientEmptyState(symbol: "dumbbell", title: "Nessun piano Trainer", message: "Il tuo Trainer non ha ancora pubblicato una scheda attiva. Le tue schede personali restano disponibili sotto.")
         }
+        ClientPersonalWorkoutLibraryView()
     }
 
     private func todayCard(plan: ClientWorkoutPlan, workout: ClientWorkoutSession) -> some View {
@@ -290,7 +292,7 @@ private struct ClientWorkoutPlanDetailView: View {
     }
 }
 
-private struct ClientWorkoutSessionDetailView: View {
+struct ClientWorkoutSessionDetailView: View {
     let plan: ClientWorkoutPlan
     let workout: ClientWorkoutSession
     @EnvironmentObject private var session: ClientSessionStore

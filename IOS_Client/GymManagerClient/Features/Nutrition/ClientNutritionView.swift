@@ -11,7 +11,9 @@ struct ClientNutritionView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let plan {
+                if identity.mode == .standalone {
+                    ClientPersonalNutritionLibraryView()
+                } else if let plan {
                     planHeader(plan)
                     weekSelector(plan)
 
@@ -26,12 +28,14 @@ struct ClientNutritionView: View {
                             mealCard(meal, day: day)
                         }
                     }
+                    ClientPersonalNutritionLibraryView()
                 } else {
                     ClientEmptyState(
                         symbol: "leaf",
-                        title: "Nessun piano nutrizionale",
-                        message: identity.mode == .standalone ? "I piani personali arriveranno nella prossima fase; puoi già usare la tua Agenda." : "Il professionista non ha ancora pubblicato un piano attivo."
+                        title: "Nessun piano Trainer",
+                        message: "Il professionista non ha ancora pubblicato un piano attivo. Puoi comunque creare il tuo piano personale."
                     )
+                    ClientPersonalNutritionLibraryView()
                 }
             }
             .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)

@@ -36,6 +36,9 @@ final class ClientRepository {
         guard links.count <= 1 else { throw ClientAppError.duplicateClientLinks }
         if let link = links.first {
             guard link.authUserID == authUserID, link.status == "active" else { throw ClientAppError.invalidClientLink }
+            let trainerRows: [TrainerNameRow] = (try? await client.from("trainers")
+                .select("id,first_name,last_name,business_name")
+                .eq("id", value: link.trainerID.uuidString).limit(1).execute().value) ?? []
             return ClientIdentity(
                 authUserID: authUserID,
                 clientID: link.id,
@@ -46,7 +49,7 @@ final class ClientRepository {
                 displayName: profile.displayName,
                 username: profile.username,
                 email: Self.publicEmail(email),
-                trainerName: nil,
+                trainerName: trainerRows.first?.displayName,
                 biologicalSex: link.biologicalSex.flatMap(ClientBiologicalSex.init(rawValue:))
                     ?? profile.biologicalSex.flatMap(ClientBiologicalSex.init(rawValue:)),
                 hasCompletedInitialOnboarding: profile.clientOnboardingCompletedAt != nil
@@ -88,7 +91,7 @@ final class ClientRepository {
         catch { snapshot.warnings.append("Allenamento non disponibile. Riprova il caricamento.") }
         do { snapshot.nutrition = try await nutrition(clientID: clientID, trainerID: trainerID, today: today) }
         catch { snapshot.warnings.append("Nutrizione non disponibile. Riprova il caricamento.") }
-        do { snapshot.appointments = try await appointments(clientID: clientID, trainerID: trainerID, today: today) }
+        do { snapshot.appointments = try await appointments(clientID: clientID, trainerID: trainerID, trainerName: identity.trainerName, today: today) }
         catch { snapshot.warnings.append("Appuntamenti non disponibili. Riprova il caricamento.") }
         do { snapshot.progress = try await progress(clientID: clientID, trainerID: trainerID) }
         catch { snapshot.warnings.append("Progressi non disponibili. Riprova il caricamento.") }
@@ -187,9 +190,9 @@ final class ClientRepository {
         )
     }
 
-    private func appointments(clientID: UUID, trainerID: UUID, today: Date) async throws -> [ClientAppointment] {
+    private func appointments(clientID: UUID, trainerID: UUID, trainerName: String?, today: Date) async throws -> [ClientAppointment] {
         let rows: [AppointmentRow] = try await client.from("appointments")
-            .select("id,client_id,trainer_id,title,starts_at,ends_at,location,status,client_visible")
+            .select("id,client_id,trainer_id,title,appointment_type,starts_at,ends_at,location,notes,status,client_visible")
             .eq("client_id", value: clientID.uuidString)
             .eq("trainer_id", value: trainerID.uuidString)
             .eq("client_visible", value: true)
@@ -199,7 +202,10 @@ final class ClientRepository {
             guard row.clientID == clientID, row.trainerID == trainerID, row.isClientVisible,
                   row.status == "scheduled", let starts = clientParseDate(row.startsAt),
                   let ends = clientParseDate(row.endsAt), ends >= today else { return nil }
-            return ClientAppointment(id: row.id, title: row.title, startsAt: starts, endsAt: ends, location: row.location)
+            return ClientAppointment(
+                id: row.id, title: row.title, startsAt: starts, endsAt: ends, location: row.location,
+                appointmentType: row.appointmentType, notes: row.notes, status: row.status, trainerName: trainerName
+            )
         }
     }
 
@@ -240,7 +246,8 @@ private struct NutritionPlanRow: Decodable { let id: UUID; let clientID: UUID?; 
 private struct NutritionDayRow: Decodable { let id: UUID; let nutritionPlanID: UUID; let dayNumber: Int; let name: String; let position: Int; let weekday: Int?; enum CodingKeys: String, CodingKey { case id, name, position, weekday; case nutritionPlanID = "nutrition_plan_id"; case dayNumber = "day_number" } }
 private struct NutritionMealRow: Decodable { let id: UUID; let dayID: UUID; let name: String; let position: Int; enum CodingKeys: String, CodingKey { case id, name, position; case dayID = "nutrition_plan_day_id" } }
 private struct NutritionFoodRow: Decodable { let id: UUID; let mealID: UUID; let foodName: String; let quantity: Double?; let unit: String; let caloriesKcal: Double?; let position: Int; enum CodingKeys: String, CodingKey { case id, quantity, unit, position; case mealID = "meal_id"; case foodName = "food_name"; case caloriesKcal = "calories_kcal" }; var clientFood: ClientFood { ClientFood(id: id, name: foodName, quantity: quantity, unit: unit, caloriesKcal: caloriesKcal) } }
-private struct AppointmentRow: Decodable { let id: UUID; let clientID: UUID; let trainerID: UUID; let title: String; let startsAt: String; let endsAt: String; let location: String?; let status: String; let isClientVisible: Bool; enum CodingKeys: String, CodingKey { case id, title, location, status; case clientID = "client_id"; case trainerID = "trainer_id"; case startsAt = "starts_at"; case endsAt = "ends_at"; case isClientVisible = "client_visible" } }
+private struct AppointmentRow: Decodable { let id: UUID; let clientID: UUID; let trainerID: UUID; let title: String; let appointmentType: String?; let startsAt: String; let endsAt: String; let location: String?; let notes: String?; let status: String; let isClientVisible: Bool; enum CodingKeys: String, CodingKey { case id, title, location, notes, status; case clientID = "client_id"; case trainerID = "trainer_id"; case appointmentType = "appointment_type"; case startsAt = "starts_at"; case endsAt = "ends_at"; case isClientVisible = "client_visible" } }
+private struct TrainerNameRow: Decodable { let id: UUID; let firstName: String; let lastName: String; let businessName: String?; var displayName: String { businessName?.isEmpty == false ? businessName! : "\(firstName) \(lastName)" }; enum CodingKeys: String, CodingKey { case id; case firstName = "first_name"; case lastName = "last_name"; case businessName = "business_name" } }
 private struct ProgressRow: Decodable { let id: UUID; let clientID: UUID; let trainerID: UUID; let recordedAt: String; let weightKg: Double?; enum CodingKeys: String, CodingKey { case id; case clientID = "client_id"; case trainerID = "trainer_id"; case recordedAt = "recorded_at"; case weightKg = "weight_kg" } }
 
 fileprivate func clientParseDate(_ value: String?) -> Date? {

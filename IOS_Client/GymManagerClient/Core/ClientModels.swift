@@ -36,6 +36,94 @@ struct ClientRegistrationIssue: Equatable, Sendable {
     let message: String
 }
 
+enum ClientRegistrationStage: String, Equatable, Sendable {
+    case idle
+    case validating
+    case authSignUp = "auth-sign-up"
+    case emailConfirmationRequired = "email-confirmation-required"
+    case sessionCreation = "session-creation"
+    case profileVerification = "profile-verification"
+    case completed
+    case failed
+}
+
+enum ClientRegistrationErrorClassifier {
+    static func issue(message: String, code: String? = nil, status: Int? = nil) -> ClientRegistrationIssue {
+        let normalizedMessage = message.lowercased()
+        let normalizedCode = code?.lowercased()
+
+        if normalizedCode == "weak_password"
+            || normalizedCode == "password_too_short"
+            || normalizedMessage.contains("weak password")
+            || normalizedMessage.contains("password should") {
+            return ClientRegistrationIssue(
+                field: .password,
+                message: "La password non rispetta i requisiti di sicurezza. Usa almeno 12 caratteri e rendila meno prevedibile."
+            )
+        }
+
+        if normalizedCode == "email_exists"
+            || normalizedCode == "user_already_exists"
+            || normalizedMessage.contains("user already registered")
+            || normalizedMessage.contains("email already") {
+            return ClientRegistrationIssue(
+                field: .form,
+                message: "Esiste già un account con questa email. Prova ad accedere."
+            )
+        }
+
+        if normalizedMessage.contains("client_username_unavailable")
+            || normalizedMessage.contains("username") {
+            return ClientRegistrationIssue(
+                field: .username,
+                message: "Questo username è già utilizzato. Scegline un altro."
+            )
+        }
+
+        if normalizedCode == "email_not_confirmed" || normalizedMessage.contains("email not confirmed") {
+            return ClientRegistrationIssue(
+                field: .form,
+                message: "L’email non è ancora confermata. Apri il link ricevuto e riprova."
+            )
+        }
+
+        if normalizedCode == "signup_disabled" || normalizedMessage.contains("signups not allowed") {
+            return ClientRegistrationIssue(
+                field: .form,
+                message: "La creazione di nuovi account è temporaneamente disabilitata."
+            )
+        }
+
+        if normalizedCode == "over_email_send_rate_limit" || status == 429 {
+            return ClientRegistrationIssue(
+                field: .form,
+                message: "Sono stati effettuati troppi tentativi. Attendi qualche minuto e riprova."
+            )
+        }
+
+        if normalizedMessage.contains("database error saving new user")
+            || normalizedMessage.contains("client_registration_invalid")
+            || normalizedCode == "unexpected_failure" {
+            return ClientRegistrationIssue(
+                field: .form,
+                message: "Il backend non ha completato la creazione del profilo Cliente. Nessun accesso è stato attivato: riprova più tardi."
+            )
+        }
+
+        if normalizedCode == "validation_failed" || status == 400 {
+            return ClientRegistrationIssue(
+                field: .form,
+                message: "Supabase ha rifiutato i dati di registrazione. Controlla i campi e riprova."
+            )
+        }
+
+        return ClientRegistrationIssue(
+            field: .form,
+            message: "Registrazione non riuscita. Controlla la connessione e riprova tra poco."
+        )
+    }
+}
+
 enum ClientRegistrationValidation {
     static func normalizedName(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -172,6 +260,10 @@ struct ClientAppointment: Identifiable, Codable, Equatable, Sendable {
     let startsAt: Date
     let endsAt: Date
     let location: String?
+    let appointmentType: String?
+    let notes: String?
+    let status: String?
+    let trainerName: String?
 }
 
 struct ClientProgressEntry: Identifiable, Codable, Equatable, Sendable {
