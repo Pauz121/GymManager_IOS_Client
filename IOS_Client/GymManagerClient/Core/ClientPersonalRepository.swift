@@ -114,9 +114,19 @@ private struct PersonalNutritionRow: Decodable {
 }
 
 private struct PersonalMealTemplateRow: Decodable {
-    let id: UUID; let name: String; let meal: ClientPersonalMeal; let updatedAt: Date
-    var template: ClientPersonalMealTemplate { ClientPersonalMealTemplate(id: id, name: name, meal: meal, updatedAt: updatedAt) }
+    let id: UUID; let name: String; let meal: ClientPersonalMeal; let updatedAt: String
+    var template: ClientPersonalMealTemplate {
+        ClientPersonalMealTemplate(id: id, name: name, meal: meal, updatedAt: clientPersonalParseDate(updatedAt) ?? .distantPast)
+    }
     enum CodingKeys: String, CodingKey { case id, name; case meal = "meal_payload"; case updatedAt = "updated_at" }
+}
+
+private func clientPersonalParseDate(_ value: String) -> Date? {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: value) { return date }
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: value)
 }
 
 private struct PersonalWorkoutWriteRow: Encodable {
