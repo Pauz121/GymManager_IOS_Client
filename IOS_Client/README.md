@@ -10,7 +10,7 @@ Il workspace contiene esclusivamente il progetto Client. Il target Trainer non v
 
 ## Configurazione
 
-Il repository è autosufficiente e non richiede la cartella Trainer. Per usare il backend live, copiare `IOS_Client/Config/Local.xcconfig.example` in `IOS_Client/Config/Local.xcconfig` e sostituire esclusivamente i placeholder con URL Supabase e publishable key client-safe dell'ambiente autorizzato. `Local.xcconfig` è ignorato da Git.
+Il repository è autosufficiente e non richiede la cartella Trainer. `Config/Backend.xcconfig` contiene esclusivamente URL e publishable key client-safe del backend production, valori che vengono comunque incorporati nel bundle iOS e la cui sicurezza dipende da Auth e RLS, non dalla segretezza della chiave. Per usare un ambiente diverso, copiare `IOS_Client/Config/Local.xcconfig.example` in `IOS_Client/Config/Local.xcconfig`: l'override locale è ignorato da Git e non deve contenere service role o altri segreti.
 
 Senza configurazione live il progetto può essere compilato; l'app segnala la configurazione mancante e, in Debug, permette di raggiungere l'onboarding e la demo locale.
 

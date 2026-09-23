@@ -16,4 +16,5 @@ PRIVACY_POLICY_URL =
 SUPPORT_URL =
 TERMS_URL =
 
+#include "Backend.xcconfig"
 #include? "Local.xcconfig"

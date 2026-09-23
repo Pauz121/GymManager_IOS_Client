@@ -51,7 +51,10 @@ $referenced = [regex]::Matches($pbx, '\b([A-F0-9]{24})\b') | ForEach-Object { $_
 Assert-Check (@($referenced | Where-Object { $_ -notin $defined }).Count -eq 0) 'Every Xcode object reference has a definition'
 
 $baseConfig = Get-Content -LiteralPath (Join-Path $clientRoot 'Config\Base.xcconfig') -Raw
-Assert-Check ($baseConfig -match '#include\? "Local\.xcconfig"' -and $baseConfig -notmatch '\.\./\.\./IOS/') 'Client configuration is self-contained with an optional ignored local override'
+$backendConfigPath = Join-Path $clientRoot 'Config\Backend.xcconfig'
+$backendConfig = if (Test-Path -LiteralPath $backendConfigPath) { Get-Content -LiteralPath $backendConfigPath -Raw } else { '' }
+Assert-Check ($baseConfig -match '#include "Backend\.xcconfig"' -and $baseConfig -match '#include\? "Local\.xcconfig"' -and $baseConfig -notmatch '\.\./\.\./IOS/') 'Client configuration is self-contained with an optional ignored local override'
+Assert-Check ($backendConfig -match 'SUPABASE_URL\s*=\s*https:/\$\(\)/uslkraelkdjrwqjisczz\.supabase\.co' -and $backendConfig -match 'SUPABASE_PUBLISHABLE_KEY\s*=\s*sb_publishable_[A-Za-z0-9_-]{20,}' -and $backendConfig -notmatch 'service_role') 'Fresh clones include only the client-safe production Supabase configuration'
 Assert-Check ($baseConfig -match 'PRODUCT_BUNDLE_IDENTIFIER = com\.gymmanager\.client\.ios') 'Client has an independent bundle identifier'
 Assert-Check ($baseConfig -match 'CODE_SIGN_ENTITLEMENTS = GymManagerClient/GymManagerClient\.entitlements') 'Client target references its HealthKit entitlement file'
 Assert-Check ($baseConfig -match 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon') 'Client target references the AppIcon asset'

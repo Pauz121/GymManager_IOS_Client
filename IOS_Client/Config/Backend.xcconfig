@@ -1,0 +1,4 @@
+// Client-safe production backend configuration bundled with the iOS app.
+// The publishable key is intentionally public and remains protected by Auth and RLS.
+SUPABASE_URL = https:/$()/uslkraelkdjrwqjisczz.supabase.co
+SUPABASE_PUBLISHABLE_KEY = sb_publishable_3YeufBjUbFT3u3brnMfC_A_5O-0mu1V
