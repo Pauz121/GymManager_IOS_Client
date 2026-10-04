@@ -107,7 +107,7 @@ struct ClientNutritionView: View {
             Text(isToday ? "OGGI" : "PASTI").font(.system(size: 9, weight: .bold))
         }
         .foregroundStyle(isSelected ? ClientClay.ink : ClientClay.secondaryInk)
-        .frame(width: 72, minHeight: 72)
+        .frame(width: 72, height: 72)
         .background(
             LinearGradient(
                 colors: isSelected

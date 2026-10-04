@@ -116,7 +116,7 @@ struct ClientPersonalNutritionLibraryView: View {
                             Text("\(day.meals.count)").font(.headline.monospacedDigit())
                         }
                         .foregroundStyle(selectedWeekday == day.weekday ? .white : ClientClay.ink)
-                        .frame(width: 66, minHeight: 58)
+                        .frame(width: 66, height: 58)
                         .background(selectedWeekday == day.weekday ? ClientClay.brandGradient : LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 16))
                         .overlay { RoundedRectangle(cornerRadius: 16).stroke(day.weekday == ClientDateLogic.weekday(for: Date()) ? ClientClay.sage : ClientClay.border, lineWidth: 2) }
                     }
