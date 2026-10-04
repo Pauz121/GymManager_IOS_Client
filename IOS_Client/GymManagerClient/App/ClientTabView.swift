@@ -8,6 +8,8 @@ struct ClientTabView: View {
     let snapshot: ClientSnapshot
     let source: ClientDataSource
     @State private var selectedTab: ClientTab = .today
+    @EnvironmentObject private var session: ClientSessionStore
+    @EnvironmentObject private var healthKit: HealthKitStepService
     @EnvironmentObject private var avatarStore: ClientAvatarStore
 
     var body: some View {
@@ -41,6 +43,62 @@ struct ClientTabView: View {
             }
         }
         .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }
+        .sheet(isPresented: healthConnectionPrompt) {
+            ClientHealthConnectionPrompt()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var healthConnectionPrompt: Binding<Bool> {
+        Binding(
+            get: {
+                source == .live
+                    && !session.shouldOfferTrainerCode
+                    && healthKit.shouldOfferConnectionPrompt
+            },
+            set: { isPresented in
+                if !isPresented, healthKit.permissionDecision == .notAsked {
+                    healthKit.declineConnection()
+                }
+            }
+        )
+    }
+}
+
+private struct ClientHealthConnectionPrompt: View {
+    @EnvironmentObject private var healthKit: HealthKitStepService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Image(systemName: "heart.text.square.fill")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(ClientClay.sage)
+                .frame(width: 64, height: 64)
+                .background(ClientClay.sage.opacity(0.13), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Collega Apple Salute")
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .foregroundStyle(ClientClay.ink)
+                Text("Weol può leggere i passi registrati dal tuo iPhone per aggiornare automaticamente l’attività di oggi.")
+                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Label("Viene richiesto soltanto l’accesso in lettura ai passi.", systemImage: "lock.shield.fill")
+                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            Spacer(minLength: 0)
+            Button {
+                Task { await healthKit.requestAccessAndRefresh() }
+            } label: {
+                Label("Collega", systemImage: "heart.fill")
+            }
+            .buttonStyle(ClayPrimaryButtonStyle())
+            Button("Non ora") { healthKit.declineConnection() }
+                .buttonStyle(ClaySecondaryButtonStyle())
+        }
+        .padding(.horizontal, ClientClay.pagePadding)
+        .padding(.vertical, 24)
+        .clientPage()
     }
 }
 

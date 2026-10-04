@@ -336,6 +336,16 @@ enum ClientAccessPolicy {
     static let canEditProfessionalNutrition = false
     static let canDisconnectTrainer = false
     static let canUsePersonalAgenda = true
+
+    static func canManagePersonalWorkoutPlans(in mode: ClientConnectionMode) -> Bool {
+        mode == .standalone
+    }
+
+    static func canManagePersonalNutritionPlans(in mode: ClientConnectionMode) -> Bool {
+        mode == .standalone
+    }
+
+    static let trainerManagedPlansMessage = "Le tue schede vengono gestite dal tuo Trainer."
 }
 
 enum ClientDateLogic {

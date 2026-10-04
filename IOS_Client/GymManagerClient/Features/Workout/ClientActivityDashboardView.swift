@@ -239,10 +239,10 @@ struct ClientActivityRecapView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            ClientPageTitle("Riepilogo", eyebrow: "Costanza e movimento", subtitle: "Solo attività realmente registrate nel periodo.")
-            periodSelector
+        VStack(alignment: .leading, spacing: 12) {
+            compactHeader
             hero
+            periodSelector
             metricGrid
             if summary.runningDistanceKm > 0 { distanceScaleIndicator }
             if buckets.isEmpty {
@@ -255,6 +255,20 @@ struct ClientActivityRecapView: View {
                 }
             }
         }
+    }
+
+    private var compactHeader: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "chart.xyaxis.line")
+                .font(.subheadline.weight(.bold)).foregroundStyle(ClientClay.sage)
+                .frame(width: 36, height: 36)
+                .background(ClientClay.sage.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Riepilogo").font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
+                Text("Attività registrate nel periodo").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var periodSelector: some View {
@@ -277,18 +291,18 @@ struct ClientActivityRecapView: View {
     }
 
     private var hero: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("GIORNI ATTIVI").font(.caption.weight(.bold)).tracking(1).foregroundStyle(.white.opacity(0.64))
-                Text("\(summary.activeDays)").font(.system(size: 38, weight: .heavy, design: .rounded).monospacedDigit()).foregroundStyle(.white)
+                Text("\(summary.activeDays)").font(.system(size: 30, weight: .heavy, design: .rounded).monospacedDigit()).foregroundStyle(.white)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 5) {
+            VStack(alignment: .trailing, spacing: 3) {
                 Text("TEMPO TOTALE").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.64))
                 Text(ClientActivityFormat.compactDuration(summary.activeSeconds)).font(.headline.monospacedDigit().weight(.bold)).foregroundStyle(.white)
             }
         }
-        .premiumCard(tint: ClientClay.sage, padding: 15)
+        .premiumCard(tint: ClientClay.sage, padding: 12)
     }
 
     private var metricGrid: some View {

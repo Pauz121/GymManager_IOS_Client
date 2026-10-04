@@ -1,37 +1,89 @@
 import SwiftUI
 
 struct ClientPersonalNutritionLibraryView: View {
+    let allowsEditing: Bool
     @EnvironmentObject private var session: ClientSessionStore
     @State private var editorPlan: ClientPersonalNutritionPlan?
     @State private var selectedWeekday = ClientDateLogic.weekday(for: Date())
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ClientSectionHeader(title: "Piano personale", detail: "Creato da te", symbol: "person.crop.circle.badge.checkmark")
-            if let plan = session.personalContent.activeNutrition {
-                planHeader(plan)
-                daySelector(plan)
-                if let day = plan.days.first(where: { $0.weekday == selectedWeekday }) ?? plan.days.first {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(day.name).font(.title2.weight(.bold)).foregroundStyle(ClientClay.ink)
-                        Text("\(Int(day.meals.reduce(0) { $0 + $1.calories }.rounded())) kcal · \(day.meals.count) pasti")
-                            .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            ClientSectionHeader(
+                title: allowsEditing ? "Piano personale" : "Piani personali precedenti",
+                detail: allowsEditing ? "Creato da te" : "Storico · sola lettura",
+                symbol: "person.crop.circle.badge.checkmark"
+            )
+
+            if !allowsEditing {
+                Label(ClientAccessPolicy.trainerManagedPlansMessage, systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.subheadline)
+                    .foregroundStyle(ClientClay.secondaryInk)
+                    .clayCard(padding: 14)
+            }
+
+            if allowsEditing {
+                if let plan = session.personalContent.activeNutrition {
+                    planHeader(plan)
+                    daySelector(plan)
+                    if let day = plan.days.first(where: { $0.weekday == selectedWeekday }) ?? plan.days.first {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(day.name).font(.title2.weight(.bold)).foregroundStyle(ClientClay.ink)
+                            Text("\(Int(day.meals.reduce(0) { $0 + $1.calories }.rounded())) kcal · \(day.meals.count) pasti")
+                                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        }
+                        ForEach(day.meals) { meal in personalMealCard(meal, plan: plan) }
                     }
-                    ForEach(day.meals) { meal in personalMealCard(meal, plan: plan) }
+                } else {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Nessun piano personale", systemImage: "leaf.circle").font(.headline).foregroundStyle(ClientClay.ink)
+                        Text("Crea i tuoi giorni, pasti e alimenti usando il database nutrizionale reale.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                        Button { editorPlan = Self.newPlan() } label: { Label("Crea piano", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
+                            .buttonStyle(ClayPrimaryButtonStyle())
+                    }
+                    .clayCard()
                 }
+            } else if session.personalContent.nutritionPlans.isEmpty {
+                Text("Nessun piano alimentare personale precedente.")
+                    .font(.subheadline)
+                    .foregroundStyle(ClientClay.secondaryInk)
+                    .clayCard(padding: 14)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Nessun piano personale", systemImage: "leaf.circle").font(.headline).foregroundStyle(ClientClay.ink)
-                    Text("Crea i tuoi giorni, pasti e alimenti usando il database nutrizionale reale.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                    Button { editorPlan = Self.newPlan() } label: { Label("Crea piano", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
-                        .buttonStyle(ClayPrimaryButtonStyle())
+                ForEach(session.personalContent.nutritionPlans) { plan in
+                    historicalPlanCard(plan)
                 }
-                .clayCard()
             }
         }
         .sheet(item: $editorPlan) { plan in
             ClientPersonalNutritionPlanEditor(plan: plan) { updated in session.savePersonalNutritionPlan(updated); editorPlan = nil }
         }
+    }
+
+    private func historicalPlanCard(_ plan: ClientPersonalNutritionPlan) -> some View {
+        let mealCount = plan.days.reduce(0) { $0 + $1.meals.count }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "archivebox.fill")
+                    .font(.title3)
+                    .foregroundStyle(ClientClay.secondaryInk)
+                VStack(alignment: .leading, spacing: 4) {
+                    ClientBadge(text: "PERSONALE · STORICO", tint: ClientClay.secondaryInk, symbol: "lock.fill")
+                    Text(plan.title).font(.headline).foregroundStyle(ClientClay.ink)
+                    Text("\(plan.days.count) giorni · \(mealCount) pasti · sola lettura")
+                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                }
+                Spacer()
+            }
+            ForEach(plan.days) { day in
+                HStack {
+                    Text(day.name).font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.ink)
+                    Spacer()
+                    Text("\(day.meals.count) pasti")
+                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .clayCard(padding: 14)
     }
 
     private func planHeader(_ plan: ClientPersonalNutritionPlan) -> some View {

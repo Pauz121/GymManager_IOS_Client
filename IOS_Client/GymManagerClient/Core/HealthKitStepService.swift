@@ -7,6 +7,32 @@ struct ClientStepSample: Equatable, Sendable {
     let count: Int
 }
 
+enum ClientHealthPermissionDecision: String, Equatable {
+    case notAsked
+    case accepted
+    case declined
+}
+
+enum ClientHealthPermissionPreference {
+    static let decisionKey = "gymmanager.client.healthkit.steps.permission-decision"
+    static let legacyAuthorizationRequestedKey = "gymmanager.client.healthkit.steps.authorization-requested"
+
+    static func load(from defaults: UserDefaults) -> ClientHealthPermissionDecision {
+        if let rawValue = defaults.string(forKey: decisionKey),
+           let decision = ClientHealthPermissionDecision(rawValue: rawValue) {
+            return decision
+        }
+        return defaults.bool(forKey: legacyAuthorizationRequestedKey) ? .accepted : .notAsked
+    }
+
+    static func save(_ decision: ClientHealthPermissionDecision, to defaults: UserDefaults) {
+        defaults.set(decision.rawValue, forKey: decisionKey)
+        if decision == .accepted {
+            defaults.set(true, forKey: legacyAuthorizationRequestedKey)
+        }
+    }
+}
+
 enum ClientHealthDayWindow {
     static func interval(containing date: Date, calendar: Calendar = .autoupdatingCurrent) -> DateInterval {
         let start = calendar.startOfDay(for: date)
@@ -27,18 +53,32 @@ final class HealthKitStepService: ObservableObject {
     }
 
     @Published private(set) var state: State
+    @Published private(set) var permissionDecision: ClientHealthPermissionDecision
     private let healthStore = HKHealthStore()
     private let defaults: UserDefaults
-    private static let authorizationRequestedKey = "gymmanager.client.healthkit.steps.authorization-requested"
     private var isRefreshing = false
+
+    var shouldOfferConnectionPrompt: Bool {
+        HKHealthStore.isHealthDataAvailable() && permissionDecision == .notAsked
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let initialDecision = ClientHealthPermissionPreference.load(from: defaults)
+        permissionDecision = initialDecision
         if !HKHealthStore.isHealthDataAvailable() {
             state = .unavailable
-        } else if defaults.bool(forKey: Self.authorizationRequestedKey) {
+        } else if initialDecision == .accepted {
             state = .loading
         } else {
+            state = .notRequested
+        }
+    }
+
+    func declineConnection() {
+        permissionDecision = .declined
+        ClientHealthPermissionPreference.save(.declined, to: defaults)
+        if HKHealthStore.isHealthDataAvailable() {
             state = .notRequested
         }
     }
@@ -50,10 +90,11 @@ final class HealthKitStepService: ObservableObject {
             return
         }
 
+        permissionDecision = .accepted
+        ClientHealthPermissionPreference.save(.accepted, to: defaults)
         state = .loading
         do {
             try await healthStore.requestAuthorization(toShare: [], read: [stepType])
-            defaults.set(true, forKey: Self.authorizationRequestedKey)
             try await refresh()
         } catch {
             state = .failed
@@ -61,7 +102,7 @@ final class HealthKitStepService: ObservableObject {
     }
 
     func refreshIfPreviouslyRequested() async {
-        guard defaults.bool(forKey: Self.authorizationRequestedKey) else { return }
+        guard permissionDecision == .accepted else { return }
         do {
             try await refresh()
         } catch {

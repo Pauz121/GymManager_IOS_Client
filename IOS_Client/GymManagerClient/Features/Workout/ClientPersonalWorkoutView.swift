@@ -1,37 +1,54 @@
 import SwiftUI
 
 struct ClientPersonalWorkoutLibraryView: View {
+    let allowsEditing: Bool
     @EnvironmentObject private var session: ClientSessionStore
     @State private var editorPlan: ClientPersonalWorkoutPlan?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ClientSectionHeader(
-                title: "Le mie schede",
-                detail: session.personalContent.workoutPlans.isEmpty ? "Crea la prima" : "\(session.personalContent.workoutPlans.count) piani",
+                title: allowsEditing ? "Le mie schede" : "Schede personali precedenti",
+                detail: libraryDetail,
                 symbol: "person.crop.rectangle.stack.fill"
             )
 
+            if !allowsEditing {
+                Label(ClientAccessPolicy.trainerManagedPlansMessage, systemImage: "person.crop.circle.badge.checkmark")
+                    .font(.subheadline)
+                    .foregroundStyle(ClientClay.secondaryInk)
+                    .clayCard(padding: 14)
+            }
+
             if session.personalContent.workoutPlans.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Nessuna scheda personale", systemImage: "sparkles.rectangle.stack")
-                        .font(.headline).foregroundStyle(ClientClay.ink)
-                    Text("Crea sessioni, scegli gli esercizi reali del catalogo e allenati subito anche senza Trainer.")
-                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                    Button { editorPlan = Self.newPlan() } label: {
-                        Label("Crea scheda", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
+                if allowsEditing {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Nessuna scheda personale", systemImage: "sparkles.rectangle.stack")
+                            .font(.headline).foregroundStyle(ClientClay.ink)
+                        Text("Crea sessioni, scegli gli esercizi reali del catalogo e allenati subito anche senza Trainer.")
+                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                        Button { editorPlan = Self.newPlan() } label: {
+                            Label("Crea scheda", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(ClayPrimaryButtonStyle())
                     }
-                    .buttonStyle(ClayPrimaryButtonStyle())
+                    .clayCard()
+                } else {
+                    Text("Nessuna scheda personale precedente.")
+                        .font(.subheadline)
+                        .foregroundStyle(ClientClay.secondaryInk)
+                        .clayCard(padding: 14)
                 }
-                .clayCard()
             } else {
                 ForEach(session.personalContent.workoutPlans) { plan in
                     personalPlanCard(plan)
                 }
-                Button { editorPlan = Self.newPlan() } label: {
-                    Label("Nuovo piano personale", systemImage: "plus").frame(maxWidth: .infinity)
+                if allowsEditing {
+                    Button { editorPlan = Self.newPlan() } label: {
+                        Label("Nuovo piano personale", systemImage: "plus").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(ClaySecondaryButtonStyle())
                 }
-                .buttonStyle(ClaySecondaryButtonStyle())
             }
         }
         .sheet(item: $editorPlan) { plan in
@@ -42,29 +59,51 @@ struct ClientPersonalWorkoutLibraryView: View {
         }
     }
 
+    private var libraryDetail: String {
+        if session.personalContent.workoutPlans.isEmpty {
+            return allowsEditing ? "Crea la prima" : "Nessuna"
+        }
+        return allowsEditing
+            ? "\(session.personalContent.workoutPlans.count) piani"
+            : "Storico · \(session.personalContent.workoutPlans.count)"
+    }
+
     private func personalPlanCard(_ personal: ClientPersonalWorkoutPlan) -> some View {
         let plan = personal.asClientPlan()
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    ClientBadge(text: personal.status == .active ? "PERSONALE · ATTIVO" : "PERSONALE · \(personal.status.rawValue.uppercased())", tint: personal.status == .active ? ClientClay.sage : ClientClay.secondaryInk, symbol: "person.fill")
+                    ClientBadge(
+                        text: allowsEditing
+                            ? (personal.status == .active ? "PERSONALE · ATTIVO" : "PERSONALE · \(personal.status.rawValue.uppercased())")
+                            : "PERSONALE · STORICO",
+                        tint: allowsEditing && personal.status == .active ? ClientClay.sage : ClientClay.secondaryInk,
+                        symbol: allowsEditing ? "person.fill" : "lock.fill"
+                    )
                     Text(personal.title).font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
-                    Text("\(personal.sessions.count) sessioni · modificabile").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                    Text("\(personal.sessions.count) sessioni · \(allowsEditing ? "modificabile" : "sola lettura")")
+                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
                 }
                 Spacer()
-                Menu {
-                    Button("Modifica", systemImage: "pencil") { editorPlan = personal }
-                    Button("Duplica", systemImage: "plus.square.on.square") {
-                        var copy = personal; copy.id = UUID(); copy.title += " · Copia"; copy.status = .draft; copy.updatedAt = Date(); session.savePersonalWorkoutPlan(copy)
-                    }
-                    Button(personal.status == .archived ? "Riattiva" : "Archivia", systemImage: "archivebox") {
-                        var updated = personal; updated.status = personal.status == .archived ? .active : .archived; updated.updatedAt = Date(); session.savePersonalWorkoutPlan(updated)
-                    }
-                    Button("Elimina", systemImage: "trash", role: .destructive) { session.deletePersonalWorkoutPlan(personal.id) }
-                } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
+                if allowsEditing {
+                    Menu {
+                        Button("Modifica", systemImage: "pencil") { editorPlan = personal }
+                        Button("Duplica", systemImage: "plus.square.on.square") {
+                            var copy = personal; copy.id = UUID(); copy.title += " · Copia"; copy.status = .draft; copy.updatedAt = Date(); session.savePersonalWorkoutPlan(copy)
+                        }
+                        Button(personal.status == .archived ? "Riattiva" : "Archivia", systemImage: "archivebox") {
+                            var updated = personal; updated.status = personal.status == .archived ? .active : .archived; updated.updatedAt = Date(); session.savePersonalWorkoutPlan(updated)
+                        }
+                        Button("Elimina", systemImage: "trash", role: .destructive) { session.deletePersonalWorkoutPlan(personal.id) }
+                    } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
+                } else {
+                    Image(systemName: "lock.fill")
+                        .font(.caption)
+                        .foregroundStyle(ClientClay.secondaryInk)
+                }
             }
 
-            if personal.status == .active {
+            if allowsEditing && personal.status == .active {
                 ForEach(plan.sessions) { workout in
                     NavigationLink {
                         ClientWorkoutSessionDetailView(plan: plan, workout: workout)
@@ -81,10 +120,28 @@ struct ClientPersonalWorkoutLibraryView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            } else if !allowsEditing {
+                ForEach(personal.sessions) { workout in
+                    HStack(spacing: 12) {
+                        Image(systemName: "figure.strengthtraining.traditional")
+                            .foregroundStyle(ClientClay.secondaryInk)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(workout.name).font(.headline).foregroundStyle(ClientClay.ink)
+                            Text("\(workout.exercises.count) esercizi")
+                                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
+                }
             }
         }
         .clayCard()
-        .overlay { RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous).stroke(personal.status == .active ? ClientClay.sage.opacity(0.42) : ClientClay.border) }
+        .overlay {
+            RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
+                .stroke(allowsEditing && personal.status == .active ? ClientClay.sage.opacity(0.42) : ClientClay.border)
+        }
     }
 
     static func newPlan() -> ClientPersonalWorkoutPlan {

@@ -163,9 +163,11 @@ struct ClientWorkoutView: View {
                     .clayCard(padding: 14)
             }
         } else if identity.mode == .trainerConnected {
-            ClientEmptyState(symbol: "dumbbell", title: "Nessun piano Trainer", message: "Il tuo Trainer non ha ancora pubblicato una scheda attiva. Le tue schede personali restano disponibili sotto.")
+            ClientEmptyState(symbol: "dumbbell", title: "Nessun piano Trainer", message: "Il tuo Trainer non ha ancora pubblicato una scheda attiva.")
         }
-        ClientPersonalWorkoutLibraryView()
+        ClientPersonalWorkoutLibraryView(
+            allowsEditing: ClientAccessPolicy.canManagePersonalWorkoutPlans(in: identity.mode)
+        )
     }
 
     private func todayCard(plan: ClientWorkoutPlan, workout: ClientWorkoutSession) -> some View {

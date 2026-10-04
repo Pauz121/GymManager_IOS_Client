@@ -13,7 +13,7 @@
 	<key>SUPABASE_URL</key><string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_PUBLISHABLE_KEY</key><string>$(SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>GymManager utilizza i dati dei passi per mostrarti l'andamento della tua attività quotidiana.</string>
+	<string>Weol usa i tuoi passi per mostrarti l'attività giornaliera e aggiornare i tuoi progressi.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GymManager usa la posizione durante una corsa per mostrare il percorso, la distanza e il ritmo.</string>
 	<key>UIBackgroundModes</key>

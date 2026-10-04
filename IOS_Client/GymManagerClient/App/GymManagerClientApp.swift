@@ -18,6 +18,9 @@ struct GymManagerClientApp: App {
                 .environmentObject(runLiveActivity)
                 .tint(ClientClay.accent)
                 .task { await session.prepare() }
+                .onOpenURL { url in
+                    Task { await session.handleAuthCallback(url) }
+                }
         }
     }
 }

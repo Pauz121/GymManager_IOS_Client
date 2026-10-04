@@ -12,7 +12,7 @@ struct ClientNutritionView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if identity.mode == .standalone {
-                    ClientPersonalNutritionLibraryView()
+                    ClientPersonalNutritionLibraryView(allowsEditing: true)
                 } else if let plan {
                     planHeader(plan)
                     weekSelector(plan)
@@ -28,14 +28,14 @@ struct ClientNutritionView: View {
                             mealCard(meal, day: day)
                         }
                     }
-                    ClientPersonalNutritionLibraryView()
+                    ClientPersonalNutritionLibraryView(allowsEditing: false)
                 } else {
                     ClientEmptyState(
                         symbol: "leaf",
                         title: "Nessun piano Trainer",
-                        message: "Il professionista non ha ancora pubblicato un piano attivo. Puoi comunque creare il tuo piano personale."
+                        message: "Il professionista non ha ancora pubblicato un piano attivo."
                     )
-                    ClientPersonalNutritionLibraryView()
+                    ClientPersonalNutritionLibraryView(allowsEditing: false)
                 }
             }
             .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)

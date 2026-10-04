@@ -3,6 +3,21 @@ import Foundation
 import OSLog
 import Supabase
 
+enum ClientEmailVerificationStatus: Equatable {
+    case unavailable
+    case checking(email: String?)
+    case unverified(email: String)
+    case verified(email: String)
+
+    var email: String? {
+        switch self {
+        case .checking(let email): email
+        case .unverified(let email), .verified(let email): email
+        case .unavailable: nil
+        }
+    }
+}
+
 @MainActor
 final class ClientSessionStore: ObservableObject {
     enum State {
@@ -22,6 +37,7 @@ final class ClientSessionStore: ObservableObject {
     @Published var notice: String?
     @Published var registrationIssue: ClientRegistrationIssue?
     @Published private(set) var registrationStage: ClientRegistrationStage = .idle
+    @Published private(set) var emailVerificationStatus: ClientEmailVerificationStatus = .unavailable
 
     var canResumePendingRegistration: Bool { pendingRegistration != nil }
 
@@ -69,8 +85,10 @@ final class ClientSessionStore: ObservableObject {
         }
         do {
             let session = try await auth.session
+            updateEmailVerificationStatus(from: session.user)
             await load(userID: session.user.id, email: session.user.email)
         } catch {
+            emailVerificationStatus = .unavailable
             state = .onboarding
         }
     }
@@ -86,6 +104,7 @@ final class ClientSessionStore: ObservableObject {
         defer { isSubmitting = false }
         do {
             let response = try await auth.signIn(email: email, password: password)
+            updateEmailVerificationStatus(from: response.user)
             await load(userID: response.user.id, email: response.user.email)
         } catch {
             try? await auth.signOut(scope: .local)
@@ -136,6 +155,7 @@ final class ClientSessionStore: ObservableObject {
 
             if let activeSession = response.session {
                 registrationStage = .profileVerification
+                updateEmailVerificationStatus(from: activeSession.user)
                 Self.logRegistration(
                     stage: .sessionCreation,
                     message: "Session returned by sign-up",
@@ -195,6 +215,7 @@ final class ClientSessionStore: ObservableObject {
             )
             self.pendingRegistration = nil
             registrationStage = .profileVerification
+            updateEmailVerificationStatus(from: response.user)
             Self.logRegistration(
                 stage: .sessionCreation,
                 message: "Confirmed account session created",
@@ -283,6 +304,7 @@ final class ClientSessionStore: ObservableObject {
         registrationIssue = nil
         pendingRegistration = nil
         registrationStage = .idle
+        emailVerificationStatus = .unavailable
         state = .onboarding
     }
 
@@ -292,7 +314,49 @@ final class ClientSessionStore: ObservableObject {
         registrationIssue = nil
         pendingRegistration = nil
         registrationStage = .idle
+        emailVerificationStatus = .unavailable
         state = .onboarding
+    }
+
+    func refreshEmailVerification() async {
+        guard case .active(_, _, let source) = state, source == .live else { return }
+        let previousStatus = emailVerificationStatus
+        emailVerificationStatus = .checking(email: previousStatus.email)
+        do {
+            let user = try await auth.user()
+            updateEmailVerificationStatus(from: user)
+        } catch {
+            emailVerificationStatus = previousStatus
+        }
+    }
+
+    func resendEmailVerification(to explicitEmail: String? = nil) async {
+        let email = explicitEmail ?? emailVerificationStatus.email
+        guard let email, !email.isEmpty else {
+            notice = "Non è disponibile un indirizzo email a cui inviare la conferma."
+            return
+        }
+
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await auth.resend(email: email, type: .signup)
+            notice = "Ti abbiamo inviato un nuovo link di conferma a \(email)."
+        } catch {
+            notice = "Non è stato possibile reinviare subito l’email. Attendi qualche minuto e riprova."
+        }
+    }
+
+    func handleAuthCallback(_ url: URL) async {
+        do {
+            let callbackSession = try await auth.session(from: url)
+            pendingRegistration = nil
+            registrationStage = .profileVerification
+            updateEmailVerificationStatus(from: callbackSession.user)
+            await load(userID: callbackSession.user.id, email: callbackSession.user.email)
+        } catch {
+            await refreshEmailVerification()
+        }
     }
 
     func refresh() async {
@@ -337,6 +401,7 @@ final class ClientSessionStore: ObservableObject {
         }
         state = .active(identity: identity, snapshot: snapshot, source: .demo)
         shouldOfferTrainerCode = false
+        emailVerificationStatus = .unavailable
     }
     #endif
 
@@ -370,6 +435,10 @@ final class ClientSessionStore: ObservableObject {
 
     func savePersonalWorkoutPlan(_ plan: ClientPersonalWorkoutPlan) {
         guard case .active(let identity, _, let source) = state else { return }
+        guard ClientAccessPolicy.canManagePersonalWorkoutPlans(in: identity.mode) else {
+            notice = ClientAccessPolicy.trainerManagedPlansMessage
+            return
+        }
         var plansToSync: [ClientPersonalWorkoutPlan] = []
         if plan.status == .active {
             for index in personalContent.workoutPlans.indices where personalContent.workoutPlans[index].id != plan.id && personalContent.workoutPlans[index].status == .active {
@@ -393,6 +462,10 @@ final class ClientSessionStore: ObservableObject {
 
     func deletePersonalWorkoutPlan(_ id: UUID) {
         guard case .active(let identity, _, let source) = state else { return }
+        guard ClientAccessPolicy.canManagePersonalWorkoutPlans(in: identity.mode) else {
+            notice = ClientAccessPolicy.trainerManagedPlansMessage
+            return
+        }
         personalContent.workoutPlans.removeAll { $0.id == id }
         persistPersonalContent(identity: identity)
         guard source == .live else { return }
@@ -404,6 +477,10 @@ final class ClientSessionStore: ObservableObject {
 
     func savePersonalNutritionPlan(_ plan: ClientPersonalNutritionPlan) {
         guard case .active(let identity, _, let source) = state else { return }
+        guard ClientAccessPolicy.canManagePersonalNutritionPlans(in: identity.mode) else {
+            notice = ClientAccessPolicy.trainerManagedPlansMessage
+            return
+        }
         var plansToSync: [ClientPersonalNutritionPlan] = []
         if plan.status == .active {
             for index in personalContent.nutritionPlans.indices where personalContent.nutritionPlans[index].id != plan.id && personalContent.nutritionPlans[index].status == .active {
@@ -427,6 +504,10 @@ final class ClientSessionStore: ObservableObject {
 
     func deletePersonalNutritionPlan(_ id: UUID) {
         guard case .active(let identity, _, let source) = state else { return }
+        guard ClientAccessPolicy.canManagePersonalNutritionPlans(in: identity.mode) else {
+            notice = ClientAccessPolicy.trainerManagedPlansMessage
+            return
+        }
         personalContent.nutritionPlans.removeAll { $0.id == id }
         persistPersonalContent(identity: identity)
         guard source == .live else { return }
@@ -702,6 +783,16 @@ final class ClientSessionStore: ObservableObject {
             }
             state = .failure((error as? LocalizedError)?.errorDescription ?? "Impossibile verificare il profilo Cliente.")
         }
+    }
+
+    private func updateEmailVerificationStatus(from user: User) {
+        guard let email = user.email, !email.isEmpty else {
+            emailVerificationStatus = .unavailable
+            return
+        }
+        emailVerificationStatus = user.emailConfirmedAt == nil
+            ? .unverified(email: email)
+            : .verified(email: email)
     }
 
     private static func logRegistration(

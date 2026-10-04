@@ -257,6 +257,13 @@ struct ClientEmailConfirmationView: View {
                         .foregroundStyle(ClientClay.secondaryInk)
                         .multilineTextAlignment(.center)
                 }
+                Button {
+                    Task { await session.resendEmailVerification(to: email) }
+                } label: {
+                    Label("Reinvia email di conferma", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(ClaySecondaryButtonStyle())
+                .disabled(session.isSubmitting)
                 NavigationLink {
                     ClientSignInView(prefilledIdentifier: email)
                 } label: {

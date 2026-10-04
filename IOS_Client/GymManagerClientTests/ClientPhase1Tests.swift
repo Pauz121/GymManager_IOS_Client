@@ -27,6 +27,16 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertTrue(ClientAccessPolicy.canUsePersonalAgenda)
     }
 
+    func testStandaloneClientCanManagePersonalPlans() {
+        XCTAssertTrue(ClientAccessPolicy.canManagePersonalWorkoutPlans(in: .standalone))
+        XCTAssertTrue(ClientAccessPolicy.canManagePersonalNutritionPlans(in: .standalone))
+    }
+
+    func testTrainerConnectedClientCannotManagePersonalPlans() {
+        XCTAssertFalse(ClientAccessPolicy.canManagePersonalWorkoutPlans(in: .trainerConnected))
+        XCTAssertFalse(ClientAccessPolicy.canManagePersonalNutritionPlans(in: .trainerConnected))
+    }
+
     func testAgendaKeyIsNamespacedByLiveUser() {
         let user = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
         XCTAssertEqual(PersonalAgendaStore.storageKey(userID: user, source: .live), "gymmanager.client.agenda.live.10000000-0000-0000-0000-000000000001")
@@ -241,6 +251,42 @@ final class ClientPhase1Tests: XCTestCase {
             ClientHealthDayWindow.interval(containing: date, calendar: rome).start,
             ClientHealthDayWindow.interval(containing: date, calendar: utc).start
         )
+    }
+
+    func testHealthPermissionDecisionDefaultsToNotAsked() {
+        let suiteName = "ClientHealthPermissionDecisionTests.defaults"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Unable to create isolated defaults")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.removePersistentDomain(forName: suiteName)
+
+        XCTAssertEqual(ClientHealthPermissionPreference.load(from: defaults), .notAsked)
+    }
+
+    func testHealthPermissionDecisionPersistsDeclineWithoutRepeatingPrompt() {
+        let suiteName = "ClientHealthPermissionDecisionTests.declined"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Unable to create isolated defaults")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.removePersistentDomain(forName: suiteName)
+
+        ClientHealthPermissionPreference.save(.declined, to: defaults)
+
+        XCTAssertEqual(ClientHealthPermissionPreference.load(from: defaults), .declined)
+    }
+
+    func testHealthPermissionDecisionMigratesPreviousAuthorizationRequest() {
+        let suiteName = "ClientHealthPermissionDecisionTests.migration"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Unable to create isolated defaults")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(true, forKey: ClientHealthPermissionPreference.legacyAuthorizationRequestedKey)
+
+        XCTAssertEqual(ClientHealthPermissionPreference.load(from: defaults), .accepted)
     }
 
     func testStandaloneDemoHasNoTrainerOrProfessionalPlans() {
