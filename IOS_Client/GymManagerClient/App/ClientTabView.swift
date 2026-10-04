@@ -11,6 +11,7 @@ struct ClientTabView: View {
     @EnvironmentObject private var session: ClientSessionStore
     @EnvironmentObject private var healthKit: HealthKitStepService
     @EnvironmentObject private var avatarStore: ClientAvatarStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -18,7 +19,7 @@ struct ClientTabView: View {
                 .tag(ClientTab.today)
             NavigationStack { ClientWorkoutView(snapshot: snapshot, identity: identity) }
                 .tag(ClientTab.workout)
-            NavigationStack { ClientNutritionView(plan: snapshot.nutrition, identity: identity) }
+            NavigationStack { ClientNutritionView(snapshot: snapshot, identity: identity) }
                 .tag(ClientTab.nutrition)
             NavigationStack { ClientProgressView(entries: snapshot.progress, identity: identity, source: source) }
                 .tag(ClientTab.progress)
@@ -43,6 +44,14 @@ struct ClientTabView: View {
             }
         }
         .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }
+        .task(id: selectedTab) {
+            guard source == .live else { return }
+            await session.refresh()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard source == .live, phase == .active else { return }
+            Task { await session.refresh() }
+        }
         .sheet(isPresented: healthConnectionPrompt) {
             ClientHealthConnectionPrompt()
                 .presentationDetents([.medium])

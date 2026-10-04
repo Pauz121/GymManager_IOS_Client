@@ -122,7 +122,7 @@ enum ClientDemoData {
         let nutritionDays = (1...7).map { weekday in
             ClientNutritionDay(id: UUID(), weekday: weekday, name: dayNames[weekday - 1], meals: meals())
         }
-        let nutrition = ClientNutritionPlan(id: nutritionID, title: "Performance settimanale", days: nutritionDays, publishedAt: now.addingTimeInterval(-172_800), detailNotice: nil)
+        let nutrition = ClientNutritionPlan(id: nutritionID, title: "Performance settimanale", startsOn: "2026-09-01", endsOn: "2026-10-31", days: nutritionDays, publishedAt: now.addingTimeInterval(-172_800), detailNotice: nil)
         let pastPlans = [
             archivedPlan(id: "DE000000-0000-0000-0000-000000000041", title: "Forza 1", starts: "2026-03-01", ends: "2026-05-31", publishedAt: now.addingTimeInterval(-15_552_000)),
             archivedPlan(id: "DE000000-0000-0000-0000-000000000042", title: "Ricondizionamento", starts: "2025-11-01", ends: "2026-01-31", publishedAt: now.addingTimeInterval(-27_648_000))

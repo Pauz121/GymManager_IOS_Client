@@ -81,12 +81,15 @@ Assert-Check ($repository -notmatch '\.(insert|update|upsert|delete|upload)\s*\(
 
 Assert-Check ($repository -match '\.eq\("auth_user_id", value: authUserID\.uuidString\)') 'Client link derives from authenticated user ID'
 Assert-Check ($repository -match '\.eq\("status", value: "active"\)' -and $repository -match 'publishedAt != nil') 'Professional plans require active and published state'
+Assert-Check ($repository -match 'isPublishedFor' -and $repository -notmatch 'start > day' -and $swift -match 'func isEffective\(on date: Date = Date\(\)\)') 'Published future plans remain readable while Today respects their effective period'
 Assert-Check ($repository -match '\.eq\("client_visible", value: true\)' -and $repository -match '\.eq\("status", value: "scheduled"\)') 'Trainer appointments require visible and scheduled state'
+Assert-Check ($repository -match '\.gte\("ends_at", value: clientRequestTimestamp\(today\)\)') 'Check Studio fetch filters expired appointments before ordering and limiting'
 
 $tabs = Get-Content -LiteralPath (Join-Path $sourceRoot 'App\ClientTabView.swift') -Raw
 Assert-Check (([regex]::Matches($tabs, '\.tag\(ClientTab\.')).Count -eq 5) 'TabView has exactly five primary destinations'
 Assert-Check ($tabs -match 'safeAreaInset' -and $tabs -match 'allowsHitTesting\(false\)') 'Demo badge respects safe area and does not intercept touches'
 Assert-Check ($tabs -match '\(\.workout, "Allenamento", "dumbbell\.fill"\)' -and $tabs -notmatch '\(\.workout, "Scheda"') 'Primary workout tab is named Allenamento'
+Assert-Check ($tabs -match '\.task\(id: selectedTab\)' -and $tabs -match 'scenePhase' -and $tabs -match 'await session\.refresh\(\)') 'Trainer content refreshes on tab opening and foreground activation'
 
 $requiredPages = @(
     'Features\Home\ClientHomeView.swift', 'Features\Workout\ClientWorkoutView.swift',
@@ -122,6 +125,8 @@ $clientSupabase = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientSu
 $sessionSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Core\ClientSessionStore.swift') -Raw
 $onboardingSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'Features\Onboarding\ClientOnboardingView.swift') -Raw
 Assert-Check ($homeSource -match 'Ciao, \\\(identity\.firstName\)' -and $homeSource -match 'Allenamento di oggi' -and $homeSource -match 'Nutrizione di oggi') 'Home is today-first and uses the authenticated Client name'
+Assert-Check ($sessionSource -match 'guard !isRefreshing' -and $sessionSource -match 'let refreshedIdentity = try await repository\.identity' -and $sessionSource -notmatch '(?s)func refresh\(\) async \{.{0,180}state = \.loading') 'Content refresh preserves the visible session and revalidates the Client link'
+Assert-Check ($swift -match '\.refreshable \{ await session\.refresh\(\) \}') 'Trainer content screens expose pull-to-refresh'
 Assert-Check ($homeSource -match 'ClientProfileAvatar' -and $homeSource -match 'ClientAccountView\(identity: identity, source: source\)' -and $homeSource -notmatch '👋') 'Home uses a real or fallback avatar linked to Account and no waving emoji'
 Assert-Check ($workoutExecution -match 'Completa serie' -and $workoutExecution -match 'ClientRestTimerBar' -and $workoutExecution -match 'Termina allenamento') 'Workout execution includes set completion, rest timer and final check'
 Assert-Check ($workoutExecution -match 'Fatica percepita' -and $workoutExecution -match 'Qualità allenamento' -and $workoutExecution -match 'Dolori o fastidi') 'Post-workout flow is limited to rapid feedback fields'

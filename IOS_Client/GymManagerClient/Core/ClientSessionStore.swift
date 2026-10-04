@@ -33,6 +33,7 @@ final class ClientSessionStore: ObservableObject {
     @Published private(set) var activity: ClientActivityState = .empty
     @Published private(set) var personalContent: ClientPersonalContentState = .empty
     @Published private(set) var shouldOfferTrainerCode = false
+    @Published private(set) var isRefreshing = false
     @Published var isSubmitting = false
     @Published var notice: String?
     @Published var registrationIssue: ClientRegistrationIssue?
@@ -361,9 +362,22 @@ final class ClientSessionStore: ObservableObject {
 
     func refresh() async {
         guard case .active(let identity, _, let source) = state, source == .live else { return }
-        state = .loading
-        let snapshot = await repository.snapshot(for: identity)
-        state = .active(identity: identity, snapshot: snapshot, source: .live)
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            let refreshedIdentity = try await repository.identity(
+                authUserID: identity.authUserID,
+                email: identity.email
+            )
+            let snapshot = await repository.snapshot(for: refreshedIdentity)
+            state = .active(identity: refreshedIdentity, snapshot: snapshot, source: .live)
+            shouldOfferTrainerCode = refreshedIdentity.mode == .standalone
+                && !refreshedIdentity.hasCompletedInitialOnboarding
+        } catch {
+            notice = (error as? LocalizedError)?.errorDescription
+                ?? "Aggiornamento non riuscito. Il collegamento con il Trainer non è stato modificato."
+        }
     }
 
     func updatePassword(_ password: String) async {

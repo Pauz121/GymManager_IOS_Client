@@ -1,12 +1,16 @@
 import SwiftUI
 
 struct ClientNutritionView: View {
-    let plan: ClientNutritionPlan?
+    let snapshot: ClientSnapshot
     let identity: ClientIdentity
     @EnvironmentObject private var session: ClientSessionStore
     @State private var selectedWeekday: Int?
 
     private var currentWeekday: Int { ClientDateLogic.weekday(for: Date()) }
+    private var plan: ClientNutritionPlan? { snapshot.nutrition }
+    private var nutritionFailure: String? {
+        snapshot.warnings.first { $0.hasPrefix("Nutrizione:") }
+    }
 
     var body: some View {
         ScrollView {
@@ -25,9 +29,12 @@ struct ClientNutritionView: View {
                     if let day = selectedDay(in: plan) {
                         currentDayHero(plan: plan, day: day)
                         ForEach(day.meals) { meal in
-                            mealCard(meal, day: day)
+                            mealCard(meal, day: day, plan: plan)
                         }
                     }
+                    ClientPersonalNutritionLibraryView(allowsEditing: false)
+                } else if let nutritionFailure {
+                    ClientFailureView(message: nutritionFailure) { Task { await session.refresh() } }
                     ClientPersonalNutritionLibraryView(allowsEditing: false)
                 } else {
                     ClientEmptyState(
@@ -41,6 +48,7 @@ struct ClientNutritionView: View {
             .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage()
+        .refreshable { await session.refresh() }
         .navigationTitle("Nutrizione")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if let plan { selectPreferredDay(in: plan) } }
@@ -54,9 +62,10 @@ struct ClientNutritionView: View {
                 .frame(width: 42, height: 42)
                 .background(ClientClay.sage.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
-                Text("PIANO ATTIVO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(ClientClay.secondaryInk)
+                Text(plan.isEffective() ? "PIANO ATTIVO" : "PIANO PUBBLICATO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(ClientClay.secondaryInk)
                 Text(plan.title).font(.headline.weight(.bold)).foregroundStyle(ClientClay.ink).lineLimit(2)
-                Text("Piano del Trainer · sola lettura").font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                Text(plan.isEffective() ? "Piano del Trainer · sola lettura" : "Disponibile dal \(plan.startsOn ?? "periodo indicato dal Trainer")")
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
             }
             Spacer(minLength: 0)
         }
@@ -123,7 +132,7 @@ struct ClientNutritionView: View {
     }
 
     private func currentDayHero(plan: ClientNutritionPlan, day: ClientNutritionDay) -> some View {
-        let current = isCurrentDay(day)
+        let current = isCurrentDay(day) && plan.isEffective()
         let completed = completedMeals(in: day)
         let calories = completed.compactMap(\.caloriesKcal).reduce(0, +)
         return VStack(alignment: .leading, spacing: 14) {
@@ -166,8 +175,8 @@ struct ClientNutritionView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func mealCard(_ meal: ClientMeal, day: ClientNutritionDay) -> some View {
-        let current = isCurrentDay(day)
+    private func mealCard(_ meal: ClientMeal, day: ClientNutritionDay, plan: ClientNutritionPlan) -> some View {
+        let current = isCurrentDay(day) && plan.isEffective()
         let completed = current && session.activity.isMealCompleted(meal.id)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {

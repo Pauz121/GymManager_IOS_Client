@@ -213,6 +213,10 @@ struct ClientWorkoutPlan: Identifiable, Codable, Equatable, Sendable {
     let sessions: [ClientWorkoutSession]
     let todaySessionID: UUID?
     let publishedAt: Date
+
+    func isEffective(on date: Date = Date()) -> Bool {
+        ClientDateLogic.isWithin(startsOn: startsOn, endsOn: endsOn, date: date)
+    }
 }
 
 struct ClientFood: Identifiable, Codable, Equatable, Sendable {
@@ -249,9 +253,15 @@ struct ClientNutritionDay: Identifiable, Codable, Equatable, Sendable {
 struct ClientNutritionPlan: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let title: String
+    let startsOn: String?
+    let endsOn: String?
     let days: [ClientNutritionDay]
     let publishedAt: Date
     let detailNotice: String?
+
+    func isEffective(on date: Date = Date()) -> Bool {
+        ClientDateLogic.isWithin(startsOn: startsOn, endsOn: endsOn, date: date)
+    }
 }
 
 struct ClientAppointment: Identifiable, Codable, Equatable, Sendable {
@@ -359,6 +369,20 @@ enum ClientDateLogic {
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: startsOn), to: calendar.startOfDay(for: today)).day ?? 0
         let week = max(1, days / 7 + 1)
         return min(week, max(1, durationWeeks ?? week))
+    }
+
+    static func isWithin(startsOn: String?, endsOn: String?, date: Date, calendar: Calendar = .current) -> Bool {
+        let day = calendar.startOfDay(for: date)
+        if let startsOn = parseDay(startsOn, calendar: calendar), startsOn > day { return false }
+        if let endsOn = parseDay(endsOn, calendar: calendar), endsOn < day { return false }
+        return true
+    }
+
+    private static func parseDay(_ value: String?, calendar: Calendar) -> Date? {
+        guard let value else { return nil }
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 }
 

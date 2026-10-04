@@ -104,7 +104,7 @@ struct ClientPersonalNutritionPlan: Identifiable, Codable, Equatable, Sendable {
 
     func asClientPlan() -> ClientNutritionPlan {
         ClientNutritionPlan(
-            id: id, title: title,
+            id: id, title: title, startsOn: nil, endsOn: nil,
             days: days.map { day in
                 ClientNutritionDay(
                     id: day.id, weekday: day.weekday, name: day.name,

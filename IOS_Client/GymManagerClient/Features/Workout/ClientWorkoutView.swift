@@ -25,6 +25,9 @@ struct ClientWorkoutView: View {
     @State private var category: Category = .activity
 
     private var plan: ClientWorkoutPlan? { snapshot.workout }
+    private var workoutFailure: String? {
+        snapshot.warnings.first { $0.hasPrefix("Allenamento:") }
+    }
     private var availableCategories: [Category] { Category.allCases }
     private var runningPlan: ClientRunningPlan {
         snapshot.runningPlan ?? ClientRunningPlan(
@@ -34,8 +37,8 @@ struct ClientWorkoutView: View {
         )
     }
     private var todayWorkout: ClientWorkoutSession? {
-        guard let id = plan?.todaySessionID else { return nil }
-        return plan?.sessions.first { $0.id == id }
+        guard let plan, plan.isEffective(), let id = plan.todaySessionID else { return nil }
+        return plan.sessions.first { $0.id == id }
     }
 
     var body: some View {
@@ -67,6 +70,7 @@ struct ClientWorkoutView: View {
             .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage()
+        .refreshable { await session.refresh() }
         .navigationTitle("Allenamento")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -119,9 +123,10 @@ struct ClientWorkoutView: View {
                     Image(systemName: "list.bullet.clipboard.fill")
                         .font(.title3).foregroundStyle(ClientClay.accentSoft)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("PIANO ATTIVO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(.white.opacity(0.62))
+                        Text(plan.isEffective() ? "PIANO ATTIVO" : "PIANO PUBBLICATO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(.white.opacity(0.62))
                         Text(plan.title).font(.headline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
-                        Text("Settimana \(plan.currentWeek) · sola lettura").font(.caption).foregroundStyle(.white.opacity(0.68))
+                        Text(plan.isEffective() ? "Settimana \(plan.currentWeek) · sola lettura" : "Disponibile dal \(plan.startsOn ?? "periodo indicato dal Trainer")")
+                            .font(.caption).foregroundStyle(.white.opacity(0.68))
                     }
                     Spacer()
                     Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.7))
@@ -131,7 +136,9 @@ struct ClientWorkoutView: View {
             .buttonStyle(.plain)
             .accessibilityHint("Apre il piano attivo completo in sola lettura")
 
-            if let today = todayWorkout {
+            if !plan.isEffective() {
+                ClientEmptyState(symbol: "calendar.badge.clock", title: "Piano in arrivo", message: "La scheda è già disponibile in sola lettura e inizierà nel periodo indicato dal Trainer.")
+            } else if let today = todayWorkout {
                 todayCard(plan: plan, workout: today)
             } else {
                 ClientEmptyState(symbol: "moon.zzz", title: "Oggi riposo", message: "Puoi consultare le altre sessioni senza avviarne una per errore.")
@@ -162,6 +169,8 @@ struct ClientWorkoutView: View {
                     .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     .clayCard(padding: 14)
             }
+        } else if let workoutFailure {
+            ClientFailureView(message: workoutFailure) { Task { await session.refresh() } }
         } else if identity.mode == .trainerConnected {
             ClientEmptyState(symbol: "dumbbell", title: "Nessun piano Trainer", message: "Il tuo Trainer non ha ancora pubblicato una scheda attiva.")
         }

@@ -88,13 +88,13 @@ final class ClientRepository {
         var snapshot = ClientSnapshot.empty
 
         do { snapshot.workout = try await workout(clientID: clientID, trainerID: trainerID, today: today) }
-        catch { snapshot.warnings.append("Allenamento non disponibile. Riprova il caricamento.") }
-        do { snapshot.nutrition = try await nutrition(clientID: clientID, trainerID: trainerID, today: today) }
-        catch { snapshot.warnings.append("Nutrizione non disponibile. Riprova il caricamento.") }
+        catch { snapshot.warnings.append(Self.contentWarning("Allenamento", error: error)) }
+        do { snapshot.nutrition = try await nutrition(clientID: clientID, trainerID: trainerID) }
+        catch { snapshot.warnings.append(Self.contentWarning("Nutrizione", error: error)) }
         do { snapshot.appointments = try await appointments(clientID: clientID, trainerID: trainerID, trainerName: identity.trainerName, today: today) }
-        catch { snapshot.warnings.append("Appuntamenti non disponibili. Riprova il caricamento.") }
+        catch { snapshot.warnings.append(Self.contentWarning("Appuntamenti", error: error)) }
         do { snapshot.progress = try await progress(clientID: clientID, trainerID: trainerID) }
-        catch { snapshot.warnings.append("Progressi non disponibili. Riprova il caricamento.") }
+        catch { snapshot.warnings.append(Self.contentWarning("Progressi", error: error)) }
 
         snapshot.updates = Self.updates(from: snapshot)
         return snapshot
@@ -110,7 +110,7 @@ final class ClientRepository {
             .order("published_at", ascending: false)
             .limit(10)
             .execute().value
-        guard let plan = rows.first(where: { $0.isVisible(on: today, clientID: clientID, trainerID: trainerID) }),
+        guard let plan = rows.first(where: { $0.isPublishedFor(clientID: clientID, trainerID: trainerID) }),
               let publishedAt = clientParseDate(plan.publishedAt) else { return nil }
 
         let days: [WorkoutDayRow] = try await client.from("workout_days")
@@ -149,7 +149,7 @@ final class ClientRepository {
         )
     }
 
-    private func nutrition(clientID: UUID, trainerID: UUID, today: Date) async throws -> ClientNutritionPlan? {
+    private func nutrition(clientID: UUID, trainerID: UUID) async throws -> ClientNutritionPlan? {
         let rows: [NutritionPlanRow] = try await client.from("nutrition_plans")
             .select("id,client_id,trainer_id,name,status,plan_kind,published_at,starts_on,ends_on")
             .eq("client_id", value: clientID.uuidString)
@@ -159,7 +159,7 @@ final class ClientRepository {
             .order("published_at", ascending: false)
             .limit(10)
             .execute().value
-        guard let plan = rows.first(where: { $0.isVisible(on: today, clientID: clientID, trainerID: trainerID) }),
+        guard let plan = rows.first(where: { $0.isPublishedFor(clientID: clientID, trainerID: trainerID) }),
               let publishedAt = clientParseDate(plan.publishedAt) else { return nil }
 
         let days: [NutritionDayRow] = try await client.from("nutrition_plan_days").select()
@@ -175,6 +175,8 @@ final class ClientRepository {
         return ClientNutritionPlan(
             id: plan.id,
             title: plan.name,
+            startsOn: plan.startsOn,
+            endsOn: plan.endsOn,
             days: days.map { day in
                 ClientNutritionDay(
                     id: day.id,
@@ -197,6 +199,7 @@ final class ClientRepository {
             .eq("trainer_id", value: trainerID.uuidString)
             .eq("client_visible", value: true)
             .eq("status", value: "scheduled")
+            .gte("ends_at", value: clientRequestTimestamp(today))
             .order("starts_at", ascending: true).limit(50).execute().value
         return rows.compactMap { row in
             guard row.clientID == clientID, row.trainerID == trainerID, row.isClientVisible,
@@ -229,6 +232,14 @@ final class ClientRepository {
         return updates.sorted { $0.date > $1.date }
     }
 
+    private static func contentWarning(_ section: String, error: Error) -> String {
+        let diagnostic = String(describing: error).lowercased()
+        if diagnostic.contains("42501") || diagnostic.contains("permission denied") || diagnostic.contains("row-level security") {
+            return "\(section): accesso non autorizzato. Verifica il collegamento con il Trainer."
+        }
+        return "\(section): caricamento non riuscito. Trascina verso il basso per riprovare."
+    }
+
     private static func publicEmail(_ value: String?) -> String? {
         guard let value, !value.hasSuffix("@accounts.gestionale.invalid") else { return nil }
         return value
@@ -238,11 +249,11 @@ final class ClientRepository {
 
 private struct ClientProfileRow: Decodable { let id: UUID; let username: String; let displayName: String; let role: String; let status: String; let isActive: Bool?; let firstName: String?; let lastName: String?; let biologicalSex: String?; let clientOnboardingCompletedAt: String?; enum CodingKeys: String, CodingKey { case id, username, role, status; case displayName = "display_name"; case isActive = "is_active"; case firstName = "first_name"; case lastName = "last_name"; case biologicalSex = "biological_sex"; case clientOnboardingCompletedAt = "client_onboarding_completed_at" } }
 private struct ClientLinkRow: Decodable { let id: UUID; let authUserID: UUID?; let trainerID: UUID; let firstName: String; let lastName: String; let status: String; let biologicalSex: String?; enum CodingKeys: String, CodingKey { case id, status; case authUserID = "auth_user_id"; case trainerID = "trainer_id"; case firstName = "first_name"; case lastName = "last_name"; case biologicalSex = "biological_sex" } }
-private struct WorkoutPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let title: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; let durationWeeks: Int?; let currentWeek: Int; enum CodingKeys: String, CodingKey { case id, title, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on"; case durationWeeks = "duration_weeks"; case currentWeek = "current_week" }; func isVisible(on date: Date, clientID: UUID, trainerID: UUID) -> Bool { guard self.clientID == clientID, self.trainerID == trainerID, status == "active", planKind == "client_plan", publishedAt != nil else { return false }; let day = Calendar.current.startOfDay(for: date); if let start = clientParseDay(startsOn), start > day { return false }; if let end = clientParseDay(endsOn), end < day { return false }; return true } }
+private struct WorkoutPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let title: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; let durationWeeks: Int?; let currentWeek: Int; enum CodingKeys: String, CodingKey { case id, title, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on"; case durationWeeks = "duration_weeks"; case currentWeek = "current_week" }; func isPublishedFor(clientID: UUID, trainerID: UUID) -> Bool { self.clientID == clientID && self.trainerID == trainerID && status == "active" && planKind == "client_plan" && publishedAt != nil } }
 private struct WorkoutDayRow: Decodable { let id: UUID; let workoutPlanID: UUID; let name: String; let weekday: Int?; let dayOrder: Int; enum CodingKeys: String, CodingKey { case id, name, weekday; case workoutPlanID = "workout_plan_id"; case dayOrder = "day_order" } }
 private struct ExerciseRow: Decodable { let id: UUID?; let name: String; let videoURL: String?; enum CodingKeys: String, CodingKey { case id, name; case videoURL = "video_url" } }
 private struct WorkoutExerciseRow: Decodable { let id: UUID; let workoutDayID: UUID; let sets: Int?; let repetitions: String?; let restSeconds: Int?; let loadKg: Double?; let notes: String?; let exerciseOrder: Int; let exercise: ExerciseRow?; enum CodingKeys: String, CodingKey { case id, sets, repetitions, notes, exercise; case workoutDayID = "workout_day_id"; case restSeconds = "rest_seconds"; case loadKg = "load_kg"; case exerciseOrder = "exercise_order" }; var clientExercise: ClientExercise { ClientExercise(id: id, name: exercise?.name ?? "Esercizio", sets: sets.map(String.init), repetitions: repetitions, restSeconds: restSeconds, loadKg: loadKg, notes: notes, videoURL: exercise?.videoURL.flatMap { URL(string: $0)?.scheme == "https" ? URL(string: $0) : nil }) } }
-private struct NutritionPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let name: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; enum CodingKeys: String, CodingKey { case id, name, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on" }; func isVisible(on date: Date, clientID: UUID, trainerID: UUID) -> Bool { guard self.clientID == clientID, self.trainerID == trainerID, status == "active", planKind == "client_plan", publishedAt != nil else { return false }; let day = Calendar.current.startOfDay(for: date); if let start = clientParseDay(startsOn), start > day { return false }; if let end = clientParseDay(endsOn), end < day { return false }; return true } }
+private struct NutritionPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let name: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; enum CodingKeys: String, CodingKey { case id, name, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on" }; func isPublishedFor(clientID: UUID, trainerID: UUID) -> Bool { self.clientID == clientID && self.trainerID == trainerID && status == "active" && planKind == "client_plan" && publishedAt != nil } }
 private struct NutritionDayRow: Decodable { let id: UUID; let nutritionPlanID: UUID; let dayNumber: Int; let name: String; let position: Int; let weekday: Int?; enum CodingKeys: String, CodingKey { case id, name, position, weekday; case nutritionPlanID = "nutrition_plan_id"; case dayNumber = "day_number" } }
 private struct NutritionMealRow: Decodable { let id: UUID; let dayID: UUID; let name: String; let position: Int; enum CodingKeys: String, CodingKey { case id, name, position; case dayID = "nutrition_plan_day_id" } }
 private struct NutritionFoodRow: Decodable { let id: UUID; let mealID: UUID; let foodName: String; let quantity: Double?; let unit: String; let caloriesKcal: Double?; let position: Int; enum CodingKeys: String, CodingKey { case id, quantity, unit, position; case mealID = "meal_id"; case foodName = "food_name"; case caloriesKcal = "calories_kcal" }; var clientFood: ClientFood { ClientFood(id: id, name: foodName, quantity: quantity, unit: unit, caloriesKcal: caloriesKcal) } }
@@ -257,6 +268,12 @@ fileprivate func clientParseDate(_ value: String?) -> Date? {
     if let date = formatter.date(from: value) { return date }
     formatter.formatOptions = [.withInternetDateTime]
     return formatter.date(from: value) ?? clientParseDay(value)
+}
+
+fileprivate func clientRequestTimestamp(_ value: Date) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.string(from: value)
 }
 
 fileprivate func clientParseDay(_ value: String?) -> Date? {

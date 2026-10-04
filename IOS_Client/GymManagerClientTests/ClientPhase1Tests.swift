@@ -621,6 +621,20 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertTrue(store.load(userID: UUID()).workoutPlans.isEmpty)
     }
 
+    func testPublishedPlanEffectiveRangeKeepsUpcomingContentReadableButNotTodayActive() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let before = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 4)))
+        let firstDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 5)))
+        let lastDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 1)))
+        let after = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 2)))
+
+        XCTAssertFalse(ClientDateLogic.isWithin(startsOn: "2026-10-05", endsOn: "2026-11-01", date: before, calendar: calendar))
+        XCTAssertTrue(ClientDateLogic.isWithin(startsOn: "2026-10-05", endsOn: "2026-11-01", date: firstDay, calendar: calendar))
+        XCTAssertTrue(ClientDateLogic.isWithin(startsOn: "2026-10-05", endsOn: "2026-11-01", date: lastDay, calendar: calendar))
+        XCTAssertFalse(ClientDateLogic.isWithin(startsOn: "2026-10-05", endsOn: "2026-11-01", date: after, calendar: calendar))
+    }
+
     private func route(distanceMeters: Double, duration: TimeInterval) -> [ClientRoutePoint] {
         let start = Date(timeIntervalSince1970: 1_757_721_600)
         return [

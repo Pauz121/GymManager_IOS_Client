@@ -12,11 +12,13 @@ struct ClientHomeView: View {
     @State private var presentedWorkout: ClientWorkoutSession?
 
     private var activeWorkoutPlan: ClientWorkoutPlan? {
-        snapshot.workout ?? session.personalContent.activeWorkout?.asClientPlan()
+        if let assigned = snapshot.workout, assigned.isEffective() { return assigned }
+        return identity.mode == .standalone ? session.personalContent.activeWorkout?.asClientPlan() : nil
     }
 
     private var activeNutritionPlan: ClientNutritionPlan? {
-        snapshot.nutrition ?? session.personalContent.activeNutrition?.asClientPlan()
+        if let assigned = snapshot.nutrition, assigned.isEffective() { return assigned }
+        return identity.mode == .standalone ? session.personalContent.activeNutrition?.asClientPlan() : nil
     }
 
     private var todayWorkout: ClientWorkoutSession? {

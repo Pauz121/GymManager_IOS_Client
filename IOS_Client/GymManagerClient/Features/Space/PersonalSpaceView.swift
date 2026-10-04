@@ -19,6 +19,10 @@ struct PersonalSpaceView: View {
             }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage().navigationTitle("Spazio").navigationBarTitleDisplayMode(.inline)
+        .refreshable {
+            await session.refresh()
+            await session.refreshEmailVerification()
+        }
         .task(id: identity.authUserID) {
             guard source == .live else { return }
             await session.refreshEmailVerification()
