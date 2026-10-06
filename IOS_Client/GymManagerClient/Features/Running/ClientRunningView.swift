@@ -1,4 +1,5 @@
 @preconcurrency import MapKit
+import Charts
 import SwiftUI
 import UIKit
 
@@ -144,7 +145,7 @@ private struct ClientRunningExecutionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var camera: MapCameraPosition = .automatic
-    @State private var metricMode: RunningMetricMode = .pace
+    @State private var metricMode: RunningMetricMode = .speed
     @State private var completedResult: ClientRunningResult?
     @State private var lastSplitCount = 0
     @State private var splitToast: ClientRunningSplit?
@@ -265,15 +266,17 @@ private struct ClientRunningExecutionView: View {
                         liveMetric(title: "Distanza", value: "\(location.distanceKm.formatted(.number.precision(.fractionLength(2)))) km", symbol: "point.topleft.down.to.point.bottomright.curvepath", prominence: true)
                     }
                     HStack(spacing: 10) {
-                        liveMetric(title: "Ritmo attuale · 25s", value: currentPace, symbol: "metronome")
-                        liveMetric(title: "Velocità attuale · 25s", value: currentSpeed, symbol: "speedometer")
-                    }
-                    HStack(spacing: 10) {
-                        liveMetric(title: "Ritmo medio", value: averagePace(at: context.date), symbol: "gauge.with.needle")
-                        liveMetric(title: "Velocità media", value: averageSpeed(at: context.date), symbol: "speedometer")
+                        if metricMode == .speed {
+                            liveMetric(title: "Velocità attuale · 25s", value: currentSpeed, symbol: "speedometer")
+                            liveMetric(title: "Velocità media", value: averageSpeed(at: context.date), symbol: "gauge.with.needle")
+                        } else {
+                            liveMetric(title: "Ritmo attuale · 25s", value: currentPace, symbol: "metronome")
+                            liveMetric(title: "Ritmo medio", value: averagePace(at: context.date), symbol: "gauge.with.needle")
+                        }
                     }
                 }
             }
+            liveTrendChart
             Picker("Metrica sul blocco schermo", selection: $metricMode) {
                 ForEach(RunningMetricMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -303,6 +306,59 @@ private struct ClientRunningExecutionView: View {
         }
         .padding(16)
         .background(ClientClay.canvas.opacity(0.97))
+    }
+
+    @ViewBuilder private var liveTrendChart: some View {
+        let samples = ClientRunningMetrics.speedSamples(for: location.route)
+        if samples.count > 1 {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label(metricMode == .speed ? "VELOCITÀ LIVE" : "RITMO LIVE", systemImage: "waveform.path.ecg")
+                        .font(.caption2.weight(.bold)).tracking(0.8).foregroundStyle(ClientClay.runAccent)
+                    Spacer()
+                    Text(metricMode == .speed ? "km/h · ultimi campioni GPS" : "min/km · più basso è più veloce")
+                        .font(.caption2).foregroundStyle(ClientClay.secondaryInk)
+                }
+                Chart(samples) { sample in
+                    if let value = liveChartValue(for: sample) {
+                        AreaMark(
+                            x: .value("Tempo", sample.elapsedSeconds),
+                            y: .value(metricMode.rawValue, value)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(LinearGradient(colors: [ClientClay.runAccent.opacity(0.34), ClientClay.runAccent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                        LineMark(
+                            x: .value("Tempo", sample.elapsedSeconds),
+                            y: .value(metricMode.rawValue, value)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(ClientClay.runAccent)
+                        .lineStyle(StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                    }
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis {
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 2)) { _ in
+                        AxisGridLine().foregroundStyle(ClientClay.border.opacity(0.65))
+                        AxisValueLabel().font(.caption2).foregroundStyle(ClientClay.secondaryInk)
+                    }
+                }
+                .chartPlotStyle { plotArea in
+                    plotArea.background(ClientClay.inset.opacity(0.44), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .frame(height: 76)
+                .accessibilityLabel(metricMode == .speed ? "Andamento live della velocità calcolato dai campioni GPS accettati" : "Andamento live del ritmo calcolato dai campioni GPS accettati")
+            }
+            .padding(11)
+            .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(ClientClay.border) }
+        }
+    }
+
+    private func liveChartValue(for sample: ClientRunningSpeedSample) -> Double? {
+        if metricMode == .speed { return sample.speedKmh }
+        guard sample.speedKmh >= 2 else { return nil }
+        return 60 / sample.speedKmh
     }
 
     private var currentPace: String {

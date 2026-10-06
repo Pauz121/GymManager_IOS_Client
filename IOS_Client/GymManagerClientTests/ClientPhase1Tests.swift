@@ -414,6 +414,17 @@ final class ClientPhase1Tests: XCTestCase {
         XCTAssertNil(ClientRunningMetrics.stabilizedSpeedMetersPerSecond(for: route(distanceMeters: 40, duration: 5)))
     }
 
+    func testLiveRunningSpeedSamplesUseRecordedRouteAndRespectLimit() {
+        let start = Date(timeIntervalSince1970: 1_757_721_600)
+        let points = (0...6).map { index in
+            routePoint(distanceMeters: Double(index) * 30, elapsed: Double(index) * 10, start: start)
+        }
+        let samples = ClientRunningMetrics.speedSamples(for: points, maximumCount: 3, smoothingSampleCount: 2)
+        XCTAssertEqual(samples.count, 3)
+        XCTAssertEqual(samples.last?.speedKmh ?? 0, 10.8, accuracy: 0.2)
+        XCTAssertTrue(samples.map(\.elapsedSeconds).elementsEqual([40, 50, 60]))
+    }
+
     func testBestEffortFindsInternalThreeKilometerWindow() {
         let start = Date(timeIntervalSince1970: 1_757_721_600)
         let distances = stride(from: 0.0, through: 8_000.0, by: 1_000).map { $0 }

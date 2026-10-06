@@ -370,12 +370,19 @@ struct ClientActivityRecapView: View {
         VStack(alignment: .leading, spacing: 12) {
             ClientSectionHeader(title: "Chilometri corsi", detail: "km per periodo", symbol: "chart.xyaxis.line")
             Chart(buckets) { bucket in
+                AreaMark(
+                    x: .value("Periodo", bucket.label),
+                    y: .value("Chilometri", bucket.runningKm)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(LinearGradient(colors: [ClientClay.runAccent.opacity(0.30), ClientClay.runAccent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                 LineMark(
                     x: .value("Periodo", bucket.label),
                     y: .value("Chilometri", bucket.runningKm)
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(ClientClay.runAccent)
+                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                 PointMark(
                     x: .value("Periodo", bucket.label),
                     y: .value("Chilometri", bucket.runningKm)

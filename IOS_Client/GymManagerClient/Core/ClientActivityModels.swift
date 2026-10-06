@@ -136,6 +136,14 @@ struct ClientRunningResult: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+struct ClientRunningSpeedSample: Identifiable, Equatable, Sendable {
+    let timestamp: Date
+    let elapsedSeconds: TimeInterval
+    let speedKmh: Double
+
+    var id: Date { timestamp }
+}
+
 enum ClientRunningMetrics {
     static func distanceMeters(for route: [ClientRoutePoint]) -> Double {
         guard route.count > 1 else { return 0 }
@@ -160,6 +168,37 @@ enum ClientRunningMetrics {
         let duration = latestElapsed - elapsed(start)
         guard duration >= minimumSampleSeconds else { return nil }
         return distanceMeters(for: recent) / duration
+    }
+
+    static func speedSamples(
+        for route: [ClientRoutePoint],
+        maximumCount: Int = 90,
+        smoothingSampleCount: Int = 4
+    ) -> [ClientRunningSpeedSample] {
+        guard route.count > 1, maximumCount > 0 else { return [] }
+        var rawSpeeds: [Double] = []
+        var samples: [ClientRunningSpeedSample] = []
+        let firstTimestamp = route[0].timestamp
+
+        for index in 1..<route.count {
+            let previous = route[index - 1]
+            let current = route[index]
+            let elapsed = current.elapsedSeconds ?? max(0, current.timestamp.timeIntervalSince(firstTimestamp))
+            let segmentDuration: TimeInterval
+            if let currentElapsed = current.elapsedSeconds, let previousElapsed = previous.elapsedSeconds {
+                segmentDuration = currentElapsed - previousElapsed
+            } else {
+                segmentDuration = current.timestamp.timeIntervalSince(previous.timestamp)
+            }
+            guard segmentDuration > 0 else { continue }
+            let metersPerSecond = current.speedMetersPerSecond ?? (distanceMeters(from: previous, to: current) / segmentDuration)
+            guard metersPerSecond >= 0, metersPerSecond <= 12 else { continue }
+            rawSpeeds.append(metersPerSecond * 3.6)
+            let window = rawSpeeds.suffix(max(1, smoothingSampleCount))
+            let smoothed = window.reduce(0, +) / Double(window.count)
+            samples.append(ClientRunningSpeedSample(timestamp: current.timestamp, elapsedSeconds: elapsed, speedKmh: smoothed))
+        }
+        return Array(samples.suffix(maximumCount))
     }
 
     static func distanceMeters(from first: ClientRoutePoint, to second: ClientRoutePoint) -> Double {

@@ -547,9 +547,13 @@ private struct ClientExerciseDetailSheet: View {
                         .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                 } else {
                     Chart(loadHistory) { item in
+                        AreaMark(x: .value("Data", item.date), y: .value("Carico kg", item.loadKg))
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(LinearGradient(colors: [ClientClay.accent.opacity(0.28), ClientClay.accent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                         LineMark(x: .value("Data", item.date), y: .value("Carico kg", item.loadKg))
                             .interpolationMethod(.catmullRom)
                             .foregroundStyle(ClientClay.accent)
+                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                         PointMark(x: .value("Data", item.date), y: .value("Carico kg", item.loadKg))
                             .foregroundStyle(ClientClay.accentSoft)
                     }

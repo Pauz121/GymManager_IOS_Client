@@ -27,9 +27,25 @@ struct ClientProgressView: View {
         let kind: String
     }
 
+    private enum ActivityKind: String {
+        case gym = "Palestra"
+        case running = "Corsa"
+    }
+
     private struct ActivityPoint: Identifiable {
         let date: Date
         let count: Int
+        let kind: ActivityKind
+        var id: String { "\(date.timeIntervalSince1970)-\(kind.rawValue)" }
+    }
+
+    private struct ActivityHeatmapPoint: Identifiable {
+        let date: Date
+        let week: Int
+        let weekday: Int
+        let gymCount: Int
+        let runningCount: Int
+        var total: Int { gymCount + runningCount }
         var id: Date { date }
     }
 
@@ -83,7 +99,28 @@ struct ClientProgressView: View {
             let runningCount = session.activity.runningResults.filter {
                 calendar.isDate($0.completedAt, inSameDayAs: day)
             }.count
-            return ActivityPoint(date: day, count: gymCount + runningCount)
+            return [
+                ActivityPoint(date: day, count: gymCount, kind: .gym),
+                ActivityPoint(date: day, count: runningCount, kind: .running),
+            ]
+        }
+        .flatMap { $0 }
+    }
+
+    private var activityHeatmap: [ActivityHeatmapPoint] {
+        let calendar = Calendar.autoupdatingCurrent
+        guard let currentMonday = ClientProgressWeek.mondayToSunday(containing: Date(), calendar: calendar).first,
+              let start = calendar.date(byAdding: .weekOfYear, value: -15, to: currentMonday) else { return [] }
+        return (0..<(16 * 7)).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: start) else { return nil }
+            let gymCount = session.activity.workouts.filter { execution in
+                guard let completedAt = execution.completedAt else { return false }
+                return calendar.isDate(completedAt, inSameDayAs: day)
+            }.count
+            let runningCount = session.activity.runningResults.filter {
+                calendar.isDate($0.completedAt, inSameDayAs: day)
+            }.count
+            return ActivityHeatmapPoint(date: day, week: offset / 7, weekday: offset % 7, gymCount: gymCount, runningCount: runningCount)
         }
     }
 
@@ -97,6 +134,7 @@ struct ClientProgressView: View {
                 ClientSectionHeader(title: "Riepilogo", detail: "Dati registrati", symbol: "square.grid.2x2.fill")
                 kpiGrid
                 weeklyWorkoutChart
+                activityHeatmapChart
 
                 if !weights.isEmpty { weightSection }
                 if !measurements.isEmpty { measurementsSection }
@@ -167,6 +205,13 @@ struct ClientProgressView: View {
               let latest = weights.last?.weightKg,
               let previous = weights.dropLast().last?.weightKg else { return nil }
         return latest - previous
+    }
+
+    private var weightChartDomain: ClosedRange<Double> {
+        let values = weights.compactMap(\.weightKg)
+        guard let minimum = values.min(), let maximum = values.max() else { return 0...1 }
+        let padding = max(0.8, (maximum - minimum) * 0.18)
+        return max(0, minimum - padding)...(maximum + padding)
     }
 
     private var heroTitle: String {
@@ -249,12 +294,22 @@ struct ClientProgressView: View {
 
     private var weeklyWorkoutChart: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ClientSectionHeader(title: "Settimana corrente", detail: "Lunedì – Domenica", symbol: "calendar.badge.checkmark")
+            ClientSectionHeader(title: "Settimana corrente", detail: "Lunedì – Domenica · Palestra vs corsa", symbol: "chart.bar.xaxis")
+            HStack(spacing: 14) {
+                activityLegend("Palestra", tint: ClientClay.accent)
+                activityLegend("Corsa", tint: ClientClay.runAccent)
+            }
             Chart(weeklyActivity) { point in
                 BarMark(x: .value("Giorno", point.date, unit: .day), y: .value("Allenamenti", point.count))
-                    .foregroundStyle(LinearGradient(colors: [ClientClay.accent, ClientClay.accent.opacity(0.55)], startPoint: .top, endPoint: .bottom))
+                    .foregroundStyle(by: .value("Tipo", point.kind.rawValue))
+                    .position(by: .value("Tipo", point.kind.rawValue))
                     .cornerRadius(6)
             }
+            .chartForegroundStyleScale([
+                ActivityKind.gym.rawValue: ClientClay.accent,
+                ActivityKind.running.rawValue: ClientClay.runAccent,
+            ])
+            .chartLegend(.hidden)
             .chartYScale(domain: 0...max(1, weeklyActivity.map(\.count).max() ?? 1))
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day)) { _ in
@@ -265,10 +320,66 @@ struct ClientProgressView: View {
             }
             .chartYAxis(.hidden)
             .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
-            .frame(height: 130)
-            .accessibilityLabel("Attività completate nella settimana da lunedì a domenica")
+            .frame(height: 145)
+            .accessibilityLabel("Confronto tra allenamenti in palestra e corse nella settimana da lunedì a domenica")
         }
         .clayCard()
+    }
+
+    private var activityHeatmapChart: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ClientSectionHeader(title: "Costanza", detail: "Ultime 16 settimane", symbol: "square.grid.3x3.fill")
+            Chart(activityHeatmap) { point in
+                RectangleMark(
+                    x: .value("Settimana", point.week),
+                    y: .value("Giorno", point.weekday),
+                    width: .ratio(0.82),
+                    height: .ratio(0.82)
+                )
+                .foregroundStyle(heatmapColor(for: point))
+                .cornerRadius(3)
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks(values: [0, 2, 4, 6]) { value in
+                    AxisValueLabel {
+                        if let weekday = value.as(Int.self) {
+                            Text(["L", "M", "M", "G", "V", "S", "D"][weekday])
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(ClientClay.secondaryInk)
+                        }
+                    }
+                    AxisGridLine().foregroundStyle(.clear)
+                }
+            }
+            .chartPlotStyle { plotArea in
+                plotArea.background(ClientClay.inset.opacity(0.34), in: RoundedRectangle(cornerRadius: 12))
+            }
+            .frame(height: 132)
+            .accessibilityLabel("Mappa delle attività completate nelle ultime sedici settimane")
+            HStack(spacing: 12) {
+                activityLegend("Riposo", tint: ClientClay.border)
+                activityLegend("Palestra", tint: ClientClay.accent)
+                activityLegend("Corsa", tint: ClientClay.runAccent)
+                activityLegend("Entrambi", tint: ClientClay.sage)
+            }
+            .font(.caption2)
+        }
+        .clayCard()
+    }
+
+    private func activityLegend(_ title: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 3).fill(tint).frame(width: 10, height: 10)
+            Text(title).font(.caption2.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
+        }
+    }
+
+    private func heatmapColor(for point: ActivityHeatmapPoint) -> Color {
+        if point.gymCount > 0, point.runningCount > 0 { return ClientClay.sage }
+        if point.gymCount > 0 { return ClientClay.accent.opacity(min(1, 0.55 + Double(point.gymCount - 1) * 0.18)) }
+        if point.runningCount > 0 { return ClientClay.runAccent.opacity(min(1, 0.55 + Double(point.runningCount - 1) * 0.18)) }
+        return ClientClay.border.opacity(0.72)
     }
 
     private var weightSection: some View {
@@ -298,6 +409,7 @@ struct ClientProgressView: View {
                 }
                 .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).foregroundStyle(ClientClay.secondaryInk); AxisGridLine().foregroundStyle(.clear) } }
                 .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(ClientClay.border); AxisValueLabel().foregroundStyle(ClientClay.secondaryInk) } }
+                .chartYScale(domain: weightChartDomain)
                 .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
                 .frame(height: 210)
                 .accessibilityLabel("Grafico andamento del peso")
