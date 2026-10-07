@@ -50,6 +50,7 @@ final class ClientSessionStore: ObservableObject {
     private let personalRepository: ClientPersonalRepository
     private let trainerCodeActivator: any TrainerCodeActivating
     private var pendingRegistration: PendingRegistration?
+    private var exerciseCatalogCache: [ClientExerciseCatalogItem]?
 
     private struct PendingRegistration {
         let email: String
@@ -453,24 +454,42 @@ final class ClientSessionStore: ObservableObject {
             notice = ClientAccessPolicy.trainerManagedPlansMessage
             return
         }
-        var plansToSync: [ClientPersonalWorkoutPlan] = []
-        if plan.status == .active {
-            for index in personalContent.workoutPlans.indices where personalContent.workoutPlans[index].id != plan.id && personalContent.workoutPlans[index].status == .active {
-                personalContent.workoutPlans[index].status = .archived
-                personalContent.workoutPlans[index].updatedAt = Date()
-                plansToSync.append(personalContent.workoutPlans[index])
-            }
-        }
-        if let index = personalContent.workoutPlans.firstIndex(where: { $0.id == plan.id }) { personalContent.workoutPlans[index] = plan }
-        else { personalContent.workoutPlans.insert(plan, at: 0) }
-        persistPersonalContent(identity: identity)
+        let plansToSync = stagePersonalWorkoutPlan(plan, identity: identity)
         guard source == .live else { return }
-        plansToSync.append(plan)
         Task {
             do {
                 for item in plansToSync { try await personalRepository.saveWorkoutPlan(item, userID: identity.authUserID) }
             }
             catch { notice = "Scheda salvata sul dispositivo; sincronizzazione non disponibile." }
+        }
+    }
+
+    func savePersonalWorkoutPlanConfirmed(_ plan: ClientPersonalWorkoutPlan) async -> Bool {
+        guard case .active(let identity, _, let source) = state else { return false }
+        guard ClientAccessPolicy.canManagePersonalWorkoutPlans(in: identity.mode) else {
+            notice = ClientAccessPolicy.trainerManagedPlansMessage
+            return false
+        }
+        let plansToSync = stagePersonalWorkoutPlan(plan, identity: identity)
+        guard source == .live else {
+            notice = "Scheda salvata in modalità demo."
+            return true
+        }
+        do {
+            for item in plansToSync { try await personalRepository.saveWorkoutPlan(item, userID: identity.authUserID) }
+            guard let confirmed = try await personalRepository.workoutPlan(id: plan.id, userID: identity.authUserID) else {
+                notice = "Il server non ha confermato il salvataggio della scheda."
+                return false
+            }
+            if let index = personalContent.workoutPlans.firstIndex(where: { $0.id == confirmed.id }) {
+                personalContent.workoutPlans[index] = confirmed
+            }
+            persistPersonalContent(identity: identity)
+            notice = "Scheda salvata e verificata."
+            return true
+        } catch {
+            notice = "Scheda conservata sul dispositivo, ma il database non ha confermato la sincronizzazione."
+            return false
         }
     }
 
@@ -555,8 +574,39 @@ final class ClientSessionStore: ObservableObject {
         (try? await personalRepository.searchExercises(query)) ?? []
     }
 
+    func personalExerciseCatalog(forceReload: Bool = false) async -> [ClientExerciseCatalogItem] {
+        if !forceReload, let exerciseCatalogCache { return exerciseCatalogCache }
+        do {
+            let catalog = try await personalRepository.exerciseCatalog()
+            exerciseCatalogCache = catalog
+            return catalog
+        } catch {
+            notice = "Database esercizi temporaneamente non disponibile."
+            return exerciseCatalogCache ?? []
+        }
+    }
+
     func searchPersonalFoods(_ query: String) async -> [ClientFoodCatalogItem] {
         (try? await personalRepository.searchFoods(query)) ?? []
+    }
+
+    private func stagePersonalWorkoutPlan(_ plan: ClientPersonalWorkoutPlan, identity: ClientIdentity) -> [ClientPersonalWorkoutPlan] {
+        var plansToSync: [ClientPersonalWorkoutPlan] = []
+        if plan.status == .active {
+            for index in personalContent.workoutPlans.indices where personalContent.workoutPlans[index].id != plan.id && personalContent.workoutPlans[index].status == .active {
+                personalContent.workoutPlans[index].status = .archived
+                personalContent.workoutPlans[index].updatedAt = Date()
+                plansToSync.append(personalContent.workoutPlans[index])
+            }
+        }
+        if let index = personalContent.workoutPlans.firstIndex(where: { $0.id == plan.id }) {
+            personalContent.workoutPlans[index] = plan
+        } else {
+            personalContent.workoutPlans.insert(plan, at: 0)
+        }
+        persistPersonalContent(identity: identity)
+        plansToSync.append(plan)
+        return plansToSync
     }
 
     func beginWorkout(plan: ClientWorkoutPlan, workoutSession: ClientWorkoutSession, now: Date = Date()) {

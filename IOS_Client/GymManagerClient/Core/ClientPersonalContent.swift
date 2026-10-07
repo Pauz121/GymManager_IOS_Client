@@ -7,6 +7,7 @@ enum ClientPersonalPlanStatus: String, Codable, CaseIterable, Sendable {
 struct ClientPersonalExercise: Identifiable, Codable, Equatable, Sendable {
     var id: UUID
     var catalogExerciseID: UUID?
+    var catalogSourceKey: String? = nil
     var name: String
     var muscleGroup: String
     var sets: Int
@@ -16,12 +17,22 @@ struct ClientPersonalExercise: Identifiable, Codable, Equatable, Sendable {
     var effortTarget: String
     var notes: String
     var videoURL: URL?
+    var primaryMuscles: [ClientMuscleRegion]? = nil
+    var secondaryMuscles: [ClientMuscleRegion]? = nil
+    var movementPattern: ClientMovementPattern? = nil
+    var compatibleEquipment: Set<ClientTrainingEquipment>? = nil
+    var exerciseKind: ClientExerciseKind? = nil
+    var animationKey: String? = nil
+    var technique: String? = nil
 
     func asClientExercise() -> ClientExercise {
         ClientExercise(
             id: id, name: name, sets: String(max(1, sets)), repetitions: repetitions,
             restSeconds: max(0, restSeconds), loadKg: loadKg,
-            notes: [effortTarget, notes].filter { !$0.isEmpty }.joined(separator: " · "), videoURL: videoURL
+            notes: [effortTarget, notes].filter { !$0.isEmpty }.joined(separator: " · "), videoURL: videoURL,
+            catalogExerciseID: catalogExerciseID, catalogSourceKey: catalogSourceKey,
+            primaryMuscles: primaryMuscles, secondaryMuscles: secondaryMuscles,
+            movementPattern: movementPattern, animationKey: animationKey, technique: technique
         )
     }
 }
@@ -30,6 +41,7 @@ struct ClientPersonalWorkoutSession: Identifiable, Codable, Equatable, Sendable 
     var id: UUID
     var name: String
     var weekday: Int?
+    var durationMinutes: Int? = nil
     var exercises: [ClientPersonalExercise]
 }
 
@@ -40,12 +52,17 @@ struct ClientPersonalWorkoutPlan: Identifiable, Codable, Equatable, Sendable {
     var sessions: [ClientPersonalWorkoutSession]
     var createdAt: Date
     var updatedAt: Date
+    var source: ClientPersonalWorkoutPlanSource? = nil
+    var durationWeeks: Int? = nil
+    var generationAnswers: ClientWorkoutQuestionnaireAnswers? = nil
+    var progression: ClientWorkoutProgressionRule? = nil
+    var validation: ClientWorkoutPlanValidation? = nil
 
     func asClientPlan(today: Date = Date()) -> ClientWorkoutPlan {
         let weekday = ClientDateLogic.weekday(for: today)
         let mapped = sessions.map {
             ClientWorkoutSession(
-                id: $0.id, name: $0.name, weekday: $0.weekday, durationMinutes: nil,
+                id: $0.id, name: $0.name, weekday: $0.weekday, durationMinutes: $0.durationMinutes,
                 exercises: $0.exercises.map { $0.asClientExercise() }
             )
         }
@@ -130,6 +147,64 @@ struct ClientExerciseCatalogItem: Identifiable, Codable, Equatable, Sendable {
     let name: String
     let muscleGroup: String?
     let videoURL: URL?
+    let instructions: String?
+    let sourceKey: String?
+    let primaryMuscles: [ClientMuscleRegion]
+    let secondaryMuscles: [ClientMuscleRegion]
+    let movementPattern: ClientMovementPattern?
+    let compatibleEquipment: Set<ClientTrainingEquipment>
+    let kind: ClientExerciseKind?
+    let minimumExperience: ClientTrainingExperience?
+    let animationKey: String?
+
+    init(
+        id: UUID,
+        name: String,
+        muscleGroup: String?,
+        videoURL: URL?,
+        instructions: String? = nil,
+        sourceKey: String? = nil,
+        primaryMuscles: [ClientMuscleRegion] = [],
+        secondaryMuscles: [ClientMuscleRegion] = [],
+        movementPattern: ClientMovementPattern? = nil,
+        compatibleEquipment: Set<ClientTrainingEquipment> = [],
+        kind: ClientExerciseKind? = nil,
+        minimumExperience: ClientTrainingExperience? = nil,
+        animationKey: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.muscleGroup = muscleGroup
+        self.videoURL = videoURL
+        self.instructions = instructions
+        self.sourceKey = sourceKey
+        self.primaryMuscles = primaryMuscles
+        self.secondaryMuscles = secondaryMuscles
+        self.movementPattern = movementPattern
+        self.compatibleEquipment = compatibleEquipment
+        self.kind = kind
+        self.minimumExperience = minimumExperience
+        self.animationKey = animationKey
+    }
+
+    func enriched(
+        sourceKey: String?,
+        primaryMuscles: [ClientMuscleRegion],
+        secondaryMuscles: [ClientMuscleRegion],
+        movementPattern: ClientMovementPattern?,
+        compatibleEquipment: Set<ClientTrainingEquipment>,
+        kind: ClientExerciseKind?,
+        minimumExperience: ClientTrainingExperience?,
+        animationKey: String?
+    ) -> ClientExerciseCatalogItem {
+        ClientExerciseCatalogItem(
+            id: id, name: name, muscleGroup: muscleGroup, videoURL: videoURL,
+            instructions: instructions, sourceKey: sourceKey,
+            primaryMuscles: primaryMuscles, secondaryMuscles: secondaryMuscles,
+            movementPattern: movementPattern, compatibleEquipment: compatibleEquipment,
+            kind: kind, minimumExperience: minimumExperience, animationKey: animationKey
+        )
+    }
 }
 
 struct ClientFoodCatalogItem: Identifiable, Codable, Equatable, Sendable {

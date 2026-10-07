@@ -3,7 +3,7 @@ import SwiftUI
 struct ClientPersonalWorkoutLibraryView: View {
     let allowsEditing: Bool
     @EnvironmentObject private var session: ClientSessionStore
-    @State private var editorPlan: ClientPersonalWorkoutPlan?
+    @State private var modal: ClientPersonalWorkoutModal?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -27,8 +27,8 @@ struct ClientPersonalWorkoutLibraryView: View {
                             .font(.headline).foregroundStyle(ClientClay.ink)
                         Text("Crea sessioni, scegli gli esercizi reali del catalogo e allenati subito anche senza Trainer.")
                             .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                        Button { editorPlan = Self.newPlan() } label: {
-                            Label("Crea scheda", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
+                        Button { modal = .creation } label: {
+                            Label("+ Nuova scheda", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(ClayPrimaryButtonStyle())
                     }
@@ -44,17 +44,29 @@ struct ClientPersonalWorkoutLibraryView: View {
                     personalPlanCard(plan)
                 }
                 if allowsEditing {
-                    Button { editorPlan = Self.newPlan() } label: {
+                    Button { modal = .creation } label: {
                         Label("Nuovo piano personale", systemImage: "plus").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(ClaySecondaryButtonStyle())
                 }
             }
         }
-        .sheet(item: $editorPlan) { plan in
-            ClientPersonalWorkoutPlanEditor(plan: plan) { updated in
-                session.savePersonalWorkoutPlan(updated)
-                editorPlan = nil
+        .sheet(item: $modal) { destination in
+            switch destination {
+            case .creation:
+                ClientWorkoutCreationChoiceView { choice in
+                    replaceModal(afterDismissWith: choice == .manual ? .editor(Self.newPlan()) : .guided)
+                }
+            case .editor(let plan):
+                ClientPersonalWorkoutPlanEditor(plan: plan) { updated in
+                    session.savePersonalWorkoutPlan(updated)
+                    modal = nil
+                }
+            case .guided:
+                ClientGuidedWorkoutView(
+                    onSaved: { modal = nil },
+                    onEdit: { plan in replaceModal(afterDismissWith: .editor(plan)) }
+                )
             }
         }
     }
@@ -87,7 +99,7 @@ struct ClientPersonalWorkoutLibraryView: View {
                 Spacer()
                 if allowsEditing {
                     Menu {
-                        Button("Modifica", systemImage: "pencil") { editorPlan = personal }
+                        Button("Modifica", systemImage: "pencil") { modal = .editor(personal) }
                         Button("Duplica", systemImage: "plus.square.on.square") {
                             var copy = personal; copy.id = UUID(); copy.title += " · Copia"; copy.status = .draft; copy.updatedAt = Date(); session.savePersonalWorkoutPlan(copy)
                         }
@@ -149,8 +161,30 @@ struct ClientPersonalWorkoutLibraryView: View {
         return ClientPersonalWorkoutPlan(
             id: UUID(), title: "La mia scheda", status: .active,
             sessions: [ClientPersonalWorkoutSession(id: UUID(), name: "Giorno A", weekday: nil, exercises: [])],
-            createdAt: now, updatedAt: now
+            createdAt: now, updatedAt: now, source: .manual
         )
+    }
+
+    private func replaceModal(afterDismissWith destination: ClientPersonalWorkoutModal) {
+        modal = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            modal = destination
+        }
+    }
+}
+
+private enum ClientPersonalWorkoutModal: Identifiable {
+    case creation
+    case editor(ClientPersonalWorkoutPlan)
+    case guided
+
+    var id: String {
+        switch self {
+        case .creation: "creation"
+        case .editor(let plan): "editor-\(plan.id.uuidString)"
+        case .guided: "guided"
+        }
     }
 }
 
@@ -172,6 +206,16 @@ private struct ClientPersonalWorkoutPlanEditor: View {
                         Text("Bozza").tag(ClientPersonalPlanStatus.draft)
                         Text("Attiva").tag(ClientPersonalPlanStatus.active)
                         Text("Archiviata").tag(ClientPersonalPlanStatus.archived)
+                    }
+                    if draft.source == .guided {
+                        Picker("Durata programma", selection: Binding(
+                            get: { draft.durationWeeks ?? 8 },
+                            set: { draft.durationWeeks = $0 }
+                        )) {
+                            ForEach([4, 6, 8, 12], id: \.self) { Text("\($0) settimane").tag($0) }
+                        }
+                        Label("Programma guidato · sempre modificabile", systemImage: "wand.and.stars")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Section("Sessioni") {
@@ -218,6 +262,12 @@ private struct ClientPersonalWorkoutSessionEditor: View {
                         Text(name).tag(Int?.some(index + 1))
                     }
                 }
+                Stepper(
+                    "Durata target: \(workout.durationMinutes ?? 60) min",
+                    value: Binding(get: { workout.durationMinutes ?? 60 }, set: { workout.durationMinutes = $0 }),
+                    in: 30...120,
+                    step: 15
+                )
             }
             Section("Esercizi") {
                 ForEach($workout.exercises) { $exercise in
@@ -226,6 +276,10 @@ private struct ClientPersonalWorkoutSessionEditor: View {
                             Text(exercise.name).font(.headline)
                             Text("\(exercise.sets) × \(exercise.repetitions) · recupero \(exercise.restSeconds)s").font(.caption).foregroundStyle(.secondary)
                         }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Duplica", systemImage: "plus.square.on.square") { duplicateExercise(exercise.id) }
+                            .tint(ClientClay.accent)
                     }
                 }
                 .onDelete { workout.exercises.remove(atOffsets: $0) }
@@ -238,6 +292,13 @@ private struct ClientPersonalWorkoutSessionEditor: View {
         .sheet(isPresented: $showPicker) {
             ClientExercisePickerSheet { exercise in workout.exercises.append(exercise); showPicker = false }
         }
+    }
+
+    private func duplicateExercise(_ id: UUID) {
+        guard let index = workout.exercises.firstIndex(where: { $0.id == id }) else { return }
+        var copy = workout.exercises[index]
+        copy.id = UUID()
+        workout.exercises.insert(copy, at: index + 1)
     }
 }
 
@@ -272,7 +333,7 @@ private struct ClientExercisePickerSheet: View {
                 Section("Database esercizi") {
                     if results.isEmpty { Text(query.isEmpty ? "Cerca nel catalogo globale" : "Nessun esercizio trovato").foregroundStyle(.secondary) }
                     ForEach(results) { item in
-                        Button { onSelect(makeExercise(item.name, catalogID: item.id, muscle: item.muscleGroup ?? "", videoURL: item.videoURL)) } label: {
+                        Button { onSelect(makeExercise(item)) } label: {
                             VStack(alignment: .leading) { Text(item.name); if let group = item.muscleGroup { Text(group).font(.caption).foregroundStyle(.secondary) } }
                         }
                     }
@@ -280,7 +341,12 @@ private struct ClientExercisePickerSheet: View {
                 Section("Esercizio personale") {
                     TextField("Nome esercizio", text: $customName)
                     Button("Aggiungi esercizio personale", systemImage: "person.badge.plus") {
-                        let exercise = makeExercise(customName, catalogID: nil, muscle: "", videoURL: nil)
+                        let exercise = ClientPersonalExercise(
+                            id: UUID(), catalogExerciseID: nil,
+                            name: customName.trimmingCharacters(in: .whitespacesAndNewlines), muscleGroup: "",
+                            sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil,
+                            effortTarget: "RIR 2", notes: "", videoURL: nil
+                        )
                         session.savePersonalExercise(exercise)
                         onSelect(exercise)
                     }
@@ -297,7 +363,16 @@ private struct ClientExercisePickerSheet: View {
         }
     }
 
-    private func makeExercise(_ name: String, catalogID: UUID?, muscle: String, videoURL: URL?) -> ClientPersonalExercise {
-        ClientPersonalExercise(id: UUID(), catalogExerciseID: catalogID, name: name.trimmingCharacters(in: .whitespacesAndNewlines), muscleGroup: muscle, sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil, effortTarget: "RIR 2", notes: "", videoURL: videoURL)
+    private func makeExercise(_ item: ClientExerciseCatalogItem) -> ClientPersonalExercise {
+        let metadata = ClientExerciseMetadataNormalizer.enrich(item)
+        return ClientPersonalExercise(
+            id: UUID(), catalogExerciseID: metadata.id, catalogSourceKey: metadata.sourceKey,
+            name: metadata.name, muscleGroup: metadata.primaryMuscles.first?.displayName ?? metadata.muscleGroup ?? "",
+            sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil,
+            effortTarget: "RIR 2", notes: "", videoURL: metadata.videoURL,
+            primaryMuscles: metadata.primaryMuscles, secondaryMuscles: metadata.secondaryMuscles,
+            movementPattern: metadata.movementPattern, compatibleEquipment: metadata.compatibleEquipment,
+            exerciseKind: metadata.kind, animationKey: metadata.animationKey, technique: metadata.instructions
+        )
     }
 }

@@ -21,11 +21,20 @@ struct ClientWorkoutExecutionView: View {
         execution?.exercises.allSatisfy(\.isCompleted) == true
     }
 
+    private var visualExercise: ClientExercise? {
+        workoutSession.exercises.first { exerciseLog(for: $0.id)?.isCompleted != true }
+            ?? workoutSession.exercises.last
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
+                    if let visualExercise {
+                        ClientExerciseVisualCard(exercise: visualExercise, isResting: session.activity.restTimer != nil)
+                            .id(visualExercise.id)
+                    }
                     ForEach(workoutSession.exercises) { exercise in
                         exerciseCard(exercise)
                     }

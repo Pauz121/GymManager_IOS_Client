@@ -194,6 +194,13 @@ struct ClientExercise: Identifiable, Codable, Equatable, Sendable {
     let loadKg: Double?
     let notes: String?
     let videoURL: URL?
+    var catalogExerciseID: UUID? = nil
+    var catalogSourceKey: String? = nil
+    var primaryMuscles: [ClientMuscleRegion]? = nil
+    var secondaryMuscles: [ClientMuscleRegion]? = nil
+    var movementPattern: ClientMovementPattern? = nil
+    var animationKey: String? = nil
+    var technique: String? = nil
 }
 
 struct ClientWorkoutSession: Identifiable, Codable, Equatable, Sendable {

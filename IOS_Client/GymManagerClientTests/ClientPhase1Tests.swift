@@ -569,6 +569,175 @@ final class ClientPhase1Tests: XCTestCase {
         })
     }
 
+    func testGuidedWorkoutBeginnerTwoDaysBuildsValidFullBodyWeek() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.experience = .beginner
+        answers.weeklyFrequency = 2
+        answers.sessionDurationMinutes = 60
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+
+        XCTAssertEqual(result.plan.sessions.count, 2)
+        XCTAssertTrue(result.plan.sessions.allSatisfy { $0.name.contains("Full Body") })
+        XCTAssertTrue(result.validation.isValid)
+        XCTAssertTrue(result.validation.allMajorGroupsCovered)
+        XCTAssertTrue(result.plan.sessions.flatMap(\.exercises).allSatisfy { $0.loadKg == nil })
+    }
+
+    func testGuidedWorkoutIntermediateFourDaysCoversEveryMajorGroup() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.experience = .intermediate
+        answers.weeklyFrequency = 4
+        answers.splitPreference = .automatic
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+
+        XCTAssertEqual(result.plan.sessions.map(\.name), ["Upper 1", "Lower 1", "Upper 2", "Lower 2"])
+        XCTAssertTrue(result.validation.allMajorGroupsCovered)
+        XCTAssertTrue(ClientMuscleRegion.majorGroups.allSatisfy { (result.validation.weeklySets[$0] ?? 0) > 0 })
+    }
+
+    func testGuidedWorkoutShoulderPriorityAddsMeaningfulVolumeWithoutDroppingCoverage() throws {
+        var base = ClientWorkoutQuestionnaireAnswers()
+        base.experience = .intermediate
+        base.weeklyFrequency = 5
+        let regular = try ClientWorkoutGenerator().generate(answers: base, catalog: generatorCatalog())
+        base.priorityMuscles = [.shoulders]
+        let priority = try ClientWorkoutGenerator().generate(answers: base, catalog: generatorCatalog())
+
+        XCTAssertGreaterThan(priority.validation.weeklySets[.shoulders] ?? 0, regular.validation.weeklySets[.shoulders] ?? 0)
+        XCTAssertTrue(priority.validation.priorityMusclesRepresented)
+        XCTAssertTrue(priority.validation.allMajorGroupsCovered)
+    }
+
+    func testGuidedWorkoutCutPreservesModerateAndHeavyRanges() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.experience = .intermediate
+        answers.weeklyFrequency = 4
+        answers.goal = .strengthAndMass
+        answers.nutritionPhase = .cut
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+        let ranges = result.plan.sessions.flatMap(\.exercises).map(\.repetitions)
+
+        XCTAssertTrue(ranges.contains("4–6"))
+        XCTAssertTrue(ranges.contains("8–12") || ranges.contains("10–15"))
+        XCTAssertFalse(ranges.allSatisfy { $0 == "10–15" })
+    }
+
+    func testGuidedWorkoutBulkDoesNotTurnEverythingIntoLowRepetitions() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.experience = .intermediate
+        answers.weeklyFrequency = 4
+        answers.goal = .hypertrophy
+        answers.nutritionPhase = .bulk
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+        let ranges = result.plan.sessions.flatMap(\.exercises).map(\.repetitions)
+
+        XCTAssertTrue(ranges.contains("6–10"))
+        XCTAssertTrue(ranges.contains("10–15"))
+        XCTAssertFalse(ranges.contains("4–6"))
+    }
+
+    func testGuidedWorkoutBodyweightNeverSelectsMachineOnlyExercise() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.weeklyFrequency = 3
+        answers.equipment = .bodyweight
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+
+        XCTAssertTrue(result.validation.equipmentCompatible)
+        XCTAssertTrue(result.plan.sessions.flatMap(\.exercises).allSatisfy { ($0.compatibleEquipment ?? []).contains(.bodyweight) })
+        XCTAssertFalse(result.plan.sessions.flatMap(\.exercises).contains { ["Lat machine", "Leg press", "Leg curl"].contains($0.name) })
+    }
+
+    func testGuidedWorkoutThirtyMinutesStaysCompact() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.weeklyFrequency = 2
+        answers.sessionDurationMinutes = 30
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+
+        XCTAssertTrue(result.plan.sessions.allSatisfy { $0.exercises.count == 4 })
+        XCTAssertTrue(result.validation.sessionDurationPlausible)
+    }
+
+    func testGuidedWorkoutNinetyMinutesDoesNotCreateAbsurdVolume() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.experience = .advanced
+        answers.weeklyFrequency = 4
+        answers.sessionDurationMinutes = 90
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+
+        XCTAssertTrue(result.plan.sessions.allSatisfy { (3...7).contains($0.exercises.count) })
+        XCTAssertLessThanOrEqual(result.validation.weeklySets.values.max() ?? 0, 22)
+        XCTAssertTrue(result.validation.weeklyVolumeValid)
+    }
+
+    func testGuidedWorkoutStoresGuidedOriginDurationAndDoubleProgression() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.durationWeeks = 12
+        let result = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())
+
+        XCTAssertEqual(result.plan.source, .guided)
+        XCTAssertEqual(result.plan.durationWeeks, 12)
+        XCTAssertEqual(result.plan.progression?.kind, "double_progression")
+        XCTAssertEqual(result.plan.progression?.durationWeeks, 12)
+        XCTAssertEqual(result.plan.generationAnswers, answers)
+    }
+
+    func testGuidedWorkoutGenerationIsDeterministicForSameCatalogAndVariation() throws {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.experience = .intermediate
+        answers.weeklyFrequency = 3
+        let first = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog(), variation: 2)
+        let second = try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog(), variation: 2)
+
+        XCTAssertEqual(first.plan.sessions.map { $0.exercises.map(\.catalogExerciseID) }, second.plan.sessions.map { $0.exercises.map(\.catalogExerciseID) })
+        XCTAssertEqual(first.validation.weeklySets, second.validation.weeklySets)
+    }
+
+    func testGuidedWorkoutStopsForInjuryOrRehabilitationText() {
+        var answers = ClientWorkoutQuestionnaireAnswers()
+        answers.limitations = "Sto facendo riabilitazione dopo un infortunio al ginocchio"
+
+        XCTAssertThrowsError(try ClientWorkoutGenerator().generate(answers: answers, catalog: generatorCatalog())) { error in
+            XCTAssertEqual(error as? ClientWorkoutGeneratorError, .unsafeLimitations)
+        }
+    }
+
+    func testExerciseVisualResolverMapsBenchPressMusclesAndMotion() {
+        let exercise = visualExercise(name: "Panca piana")
+        let descriptor = ClientExerciseVisualResolver().resolve(exercise)
+
+        XCTAssertEqual(descriptor.motion, .benchPress)
+        XCTAssertEqual(descriptor.primaryMuscles, [.chest])
+        XCTAssertTrue(descriptor.secondaryMuscles.contains(.triceps))
+        XCTAssertTrue(descriptor.secondaryMuscles.contains(.shoulders))
+        XCTAssertTrue(descriptor.isAnimated)
+    }
+
+    func testExerciseVisualResolverCoversTenPilotMotions() {
+        let expectations: [(String, ClientNativeExerciseMotion)] = [
+            ("Panca piana", .benchPress), ("Squat", .squat), ("Stacco rumeno", .romanianDeadlift),
+            ("Lat machine", .latPulldown), ("Pulley", .seatedRow), ("Shoulder press", .shoulderPress),
+            ("Curl bilanciere", .bicepsCurl), ("Push down al cavo", .tricepsPushdown),
+            ("Leg press", .legPress), ("Leg curl", .legCurl)
+        ]
+        for expectation in expectations {
+            XCTAssertEqual(ClientExerciseVisualResolver().resolve(visualExercise(name: expectation.0)).motion, expectation.1)
+        }
+    }
+
+    func testExerciseVisualFallbackIsStaticAndNeverRequiresNetwork() {
+        let descriptor = ClientExerciseVisualResolver().resolve(visualExercise(name: "Esercizio personale speciale"))
+        XCTAssertEqual(descriptor.motion, .staticPose)
+        XCTAssertEqual(descriptor.assetKey, "static_body_v1")
+        XCTAssertFalse(descriptor.isAnimated)
+    }
+
+    func testExerciseVisualVariantsCanReuseVersionedAsset() {
+        let flat = ClientExerciseVisualResolver().resolve(visualExercise(name: "Panca piana"))
+        let incline = ClientExerciseVisualResolver().resolve(visualExercise(name: "Panca inclinata"))
+        XCTAssertEqual(flat.assetKey, incline.assetKey)
+        XCTAssertEqual(flat.version, incline.version)
+    }
+
     func testPersonalWorkoutConvertsToExecutableClientPlan() {
         let exercise = ClientPersonalExercise(
             id: UUID(), catalogExerciseID: UUID(), name: "Squat", muscleGroup: "Gambe",
@@ -652,6 +821,36 @@ final class ClientPhase1Tests: XCTestCase {
             routePoint(distanceMeters: 0, elapsed: 0, start: start),
             routePoint(distanceMeters: distanceMeters, elapsed: duration, start: start)
         ]
+    }
+
+    private func generatorCatalog() -> [ClientExerciseCatalogItem] {
+        let values: [(String, String)] = [
+            ("Panca piana", "Petto"), ("Panca inclinata", "Petto"), ("Chest press", "Petto"),
+            ("Croci ai cavi", "Petto"), ("Push-up", "Petto"), ("Lat machine", "Schiena"),
+            ("Trazioni", "Schiena"), ("Pulley", "Schiena"), ("Rematore bilanciere", "Schiena"),
+            ("Shoulder press", "Spalle"), ("Alzate laterali", "Spalle"),
+            ("Curl bilanciere", "Braccia"), ("Curl manubri", "Braccia"),
+            ("French press", "Braccia"), ("Push down al cavo", "Braccia"),
+            ("Squat", "Gambe"), ("Stacco rumeno", "Gambe"), ("Leg press", "Gambe"),
+            ("Affondi", "Gambe"), ("Leg curl", "Gambe"), ("Calf raise", "Gambe"),
+            ("Crunch", "Addome"), ("Leg raise", "Addome")
+        ]
+        return values.enumerated().map { index, value in
+            ClientExerciseCatalogItem(
+                id: UUID(uuidString: String(format: "00000000-0000-4000-8000-%012d", index + 1))!,
+                name: value.0,
+                muscleGroup: value.1,
+                videoURL: nil,
+                instructions: "Tecnica verificata per \(value.0)."
+            )
+        }
+    }
+
+    private func visualExercise(name: String) -> ClientExercise {
+        ClientExercise(
+            id: UUID(), name: name, sets: "3", repetitions: "8–10",
+            restSeconds: 90, loadKg: nil, notes: nil, videoURL: nil
+        )
     }
 
     private func validRegistrationInput() -> ClientRegistrationInput {

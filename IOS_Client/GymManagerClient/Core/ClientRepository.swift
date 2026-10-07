@@ -120,7 +120,7 @@ final class ClientRepository {
             .execute().value
         let dayIDs = days.map { $0.id.uuidString }
         let exercises: [WorkoutExerciseRow] = dayIDs.isEmpty ? [] : try await client.from("workout_plan_exercises")
-            .select("id,workout_day_id,sets,repetitions,rest_seconds,load_kg,notes,exercise_order,exercise:exercises(id,name,video_url)")
+            .select("id,workout_day_id,sets,repetitions,rest_seconds,load_kg,notes,exercise_order,exercise:exercises(id,name,muscle_group,instructions,video_url,source_key)")
             .in("workout_day_id", values: dayIDs)
             .order("exercise_order", ascending: true)
             .execute().value
@@ -251,8 +251,43 @@ private struct ClientProfileRow: Decodable { let id: UUID; let username: String;
 private struct ClientLinkRow: Decodable { let id: UUID; let authUserID: UUID?; let trainerID: UUID; let firstName: String; let lastName: String; let status: String; let biologicalSex: String?; enum CodingKeys: String, CodingKey { case id, status; case authUserID = "auth_user_id"; case trainerID = "trainer_id"; case firstName = "first_name"; case lastName = "last_name"; case biologicalSex = "biological_sex" } }
 private struct WorkoutPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let title: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; let durationWeeks: Int?; let currentWeek: Int; enum CodingKeys: String, CodingKey { case id, title, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on"; case durationWeeks = "duration_weeks"; case currentWeek = "current_week" }; func isPublishedFor(clientID: UUID, trainerID: UUID) -> Bool { self.clientID == clientID && self.trainerID == trainerID && status == "active" && planKind == "client_plan" && publishedAt != nil } }
 private struct WorkoutDayRow: Decodable { let id: UUID; let workoutPlanID: UUID; let name: String; let weekday: Int?; let dayOrder: Int; enum CodingKeys: String, CodingKey { case id, name, weekday; case workoutPlanID = "workout_plan_id"; case dayOrder = "day_order" } }
-private struct ExerciseRow: Decodable { let id: UUID?; let name: String; let videoURL: String?; enum CodingKeys: String, CodingKey { case id, name; case videoURL = "video_url" } }
-private struct WorkoutExerciseRow: Decodable { let id: UUID; let workoutDayID: UUID; let sets: Int?; let repetitions: String?; let restSeconds: Int?; let loadKg: Double?; let notes: String?; let exerciseOrder: Int; let exercise: ExerciseRow?; enum CodingKeys: String, CodingKey { case id, sets, repetitions, notes, exercise; case workoutDayID = "workout_day_id"; case restSeconds = "rest_seconds"; case loadKg = "load_kg"; case exerciseOrder = "exercise_order" }; var clientExercise: ClientExercise { ClientExercise(id: id, name: exercise?.name ?? "Esercizio", sets: sets.map(String.init), repetitions: repetitions, restSeconds: restSeconds, loadKg: loadKg, notes: notes, videoURL: exercise?.videoURL.flatMap { URL(string: $0)?.scheme == "https" ? URL(string: $0) : nil }) } }
+private struct ExerciseRow: Decodable {
+    let id: UUID?; let name: String; let muscleGroup: String?; let instructions: String?; let videoURL: String?; let sourceKey: String?
+    enum CodingKeys: String, CodingKey {
+        case id, name, instructions
+        case muscleGroup = "muscle_group"
+        case videoURL = "video_url"
+        case sourceKey = "source_key"
+    }
+}
+private struct WorkoutExerciseRow: Decodable {
+    let id: UUID; let workoutDayID: UUID; let sets: Int?; let repetitions: String?; let restSeconds: Int?; let loadKg: Double?; let notes: String?; let exerciseOrder: Int; let exercise: ExerciseRow?
+    enum CodingKeys: String, CodingKey {
+        case id, sets, repetitions, notes, exercise
+        case workoutDayID = "workout_day_id"
+        case restSeconds = "rest_seconds"
+        case loadKg = "load_kg"
+        case exerciseOrder = "exercise_order"
+    }
+    var clientExercise: ClientExercise {
+        let metadata = ClientExerciseMetadataNormalizer.enrich(ClientExerciseCatalogItem(
+            id: exercise?.id ?? id,
+            name: exercise?.name ?? "Esercizio",
+            muscleGroup: exercise?.muscleGroup,
+            videoURL: exercise?.videoURL.flatMap { URL(string: $0)?.scheme == "https" ? URL(string: $0) : nil },
+            instructions: exercise?.instructions,
+            sourceKey: exercise?.sourceKey
+        ))
+        return ClientExercise(
+            id: id, name: metadata.name, sets: sets.map(String.init), repetitions: repetitions,
+            restSeconds: restSeconds, loadKg: loadKg, notes: notes, videoURL: metadata.videoURL,
+            catalogExerciseID: exercise?.id, catalogSourceKey: metadata.sourceKey,
+            primaryMuscles: metadata.primaryMuscles, secondaryMuscles: metadata.secondaryMuscles,
+            movementPattern: metadata.movementPattern, animationKey: metadata.animationKey,
+            technique: metadata.instructions
+        )
+    }
+}
 private struct NutritionPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let name: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; enum CodingKeys: String, CodingKey { case id, name, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on" }; func isPublishedFor(clientID: UUID, trainerID: UUID) -> Bool { self.clientID == clientID && self.trainerID == trainerID && status == "active" && planKind == "client_plan" && publishedAt != nil } }
 private struct NutritionDayRow: Decodable { let id: UUID; let nutritionPlanID: UUID; let dayNumber: Int; let name: String; let position: Int; let weekday: Int?; enum CodingKeys: String, CodingKey { case id, name, position, weekday; case nutritionPlanID = "nutrition_plan_id"; case dayNumber = "day_number" } }
 private struct NutritionMealRow: Decodable { let id: UUID; let dayID: UUID; let name: String; let position: Int; enum CodingKeys: String, CodingKey { case id, name, position; case dayID = "nutrition_plan_day_id" } }

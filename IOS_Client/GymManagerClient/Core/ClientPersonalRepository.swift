@@ -33,6 +33,16 @@ struct ClientPersonalRepository {
         ).execute()
     }
 
+    func workoutPlan(id: UUID, userID: UUID) async throws -> ClientPersonalWorkoutPlan? {
+        let rows: [PersonalWorkoutRow] = try await client.from("client_personal_workout_plans")
+            .select("id,title,status,plan_payload")
+            .eq("id", value: id.uuidString)
+            .eq("owner_user_id", value: userID.uuidString)
+            .limit(1)
+            .execute().value
+        return rows.first?.plan
+    }
+
     func deleteWorkoutPlan(_ id: UUID) async throws {
         try await client.from("client_personal_workout_plans").delete().eq("id", value: id.uuidString).execute()
     }
@@ -68,11 +78,23 @@ struct ClientPersonalRepository {
     }
 
     func searchExercises(_ query: String) async throws -> [ClientExerciseCatalogItem] {
-        var request = client.from("exercises").select("id,name,muscle_group,video_url").eq("is_system", value: true)
+        var request = client.from("exercises")
+            .select("id,name,muscle_group,instructions,video_url,source_key")
+            .eq("is_system", value: true)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { request = request.ilike("name", pattern: "%\(trimmed)%") }
-        let rows: [ExerciseCatalogRow] = try await request.order("name").limit(60).execute().value
-        return rows.map { ClientExerciseCatalogItem(id: $0.id, name: $0.name, muscleGroup: $0.muscleGroup, videoURL: $0.videoURL.flatMap(URL.init(string:))) }
+        let rows: [ExerciseCatalogRow] = try await request.order("name").limit(120).execute().value
+        return rows.map(\.catalogItem).map(ClientExerciseMetadataNormalizer.enrich)
+    }
+
+    func exerciseCatalog() async throws -> [ClientExerciseCatalogItem] {
+        let rows: [ExerciseCatalogRow] = try await client.from("exercises")
+            .select("id,name,muscle_group,instructions,video_url,source_key")
+            .eq("is_system", value: true)
+            .order("name")
+            .limit(500)
+            .execute().value
+        return rows.map(\.catalogItem).map(ClientExerciseMetadataNormalizer.enrich)
     }
 
     func searchFoods(_ query: String) async throws -> [ClientFoodCatalogItem] {
@@ -163,8 +185,19 @@ private struct PersonalRunWriteRow: Encodable {
 }
 
 private struct ExerciseCatalogRow: Decodable {
-    let id: UUID; let name: String; let muscleGroup: String?; let videoURL: String?
-    enum CodingKeys: String, CodingKey { case id, name; case muscleGroup = "muscle_group"; case videoURL = "video_url" }
+    let id: UUID; let name: String; let muscleGroup: String?; let instructions: String?; let videoURL: String?; let sourceKey: String?
+    var catalogItem: ClientExerciseCatalogItem {
+        ClientExerciseCatalogItem(
+            id: id, name: name, muscleGroup: muscleGroup,
+            videoURL: videoURL.flatMap(URL.init(string:)), instructions: instructions, sourceKey: sourceKey
+        )
+    }
+    enum CodingKeys: String, CodingKey {
+        case id, name, instructions
+        case muscleGroup = "muscle_group"
+        case videoURL = "video_url"
+        case sourceKey = "source_key"
+    }
 }
 
 private struct FoodCatalogRow: Decodable {

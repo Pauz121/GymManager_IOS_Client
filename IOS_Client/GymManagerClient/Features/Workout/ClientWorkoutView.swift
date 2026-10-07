@@ -462,6 +462,8 @@ private struct ClientExerciseDetailSheet: View {
                     }
                     .premiumCard()
 
+                    ClientExerciseVisualCard(exercise: exercise)
+
                     ClientSectionHeader(title: "Prescrizione", symbol: "list.bullet.clipboard.fill")
                     LazyVGrid(columns: detailColumns, spacing: 10) {
                         prescriptionTile(title: "Serie", value: exercise.sets ?? "—", symbol: "square.stack.3d.up.fill")
