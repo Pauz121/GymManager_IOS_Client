@@ -1,6 +1,12 @@
 # IOS_Client — consolidated Mac acceptance backlog, Phases1–7
 
-## LATEST — reported Xcode type-check failure / local repair,2026-10-23
+## LATEST — reported Xcode overlapping metadata access, 2026-10-23
+
+ClientNutritionGenerator.swift:109 read the whole plan inside the expression mutating its generationMetadata. The scoped compiler fix evaluates the structural signature in a local constant before a separate write. No generation rules, signature algorithm, catalog, validator or editing contract changes. Historical source baselines remain immutable; exact patch reversal verifies the entire pre-fix generator SHA256. Two native regression definitions NG01/NG02 check generated signature/validation and Codable metadata preservation (NOT database save/reopen). Now 325 native definitions / 26 test Swift files including fixtures; build and XCTest NOT RUN on Windows.
+
+Canonical source QA: `pwsh -NoProfile -File IOS_Client/scripts/validate-nutrition-generator-exclusivity.ps1 -AllStatic` (includes the prior fingerprint validator and all nine program suites). Native P0: pull the new compiler-fix commit after 701bec8, build app + Widget in Xcode and run NG01/NG02 plus all prior 323 definitions. User explicitly authorized a normal push for this fix only. No production migration/deploy or native PASS is implied.
+
+## PREVIOUS — reported Xcode type-check failure / local repair,2026-10-23
 User-reported ClientNutritionFoodPolicy.swift:125 failed to type-check the30-field fingerprint expression. Localfix splits it into small explicitlytyped steps;all30expressions/order/UTF8framing/nilmarkers/sort/newlineseparator/SHA256 retained. 50focusedSOURCEchecks+all9prior suitesPASS;this is NOT a Swiftcompile. SixClientNutritionFingerprintTests PF01–PF06definitions added:reviewedlegacygolden,Unicode+nilgolden,empty,unreviewed,order,fieldchange. NOW323native definitions/25testSwiftfilesinclfixtures. Nativebuild/XCTestNOTRUN. User authorized publication aftersourceQA. Pull the compiler-fix commit newer than d417a7d before native acceptance. NEXT:afterauthorizedtransferofexactfixedfiles,Macbuildapp+Widgetandrun6newtestsplusprior317. Do not assumeoldGitHubd417a7dcontainsfix. Historical317countsbelowpre-dateaddition.
 
 ## CURRENT — Phase6+7 final source integration,2026-10-23

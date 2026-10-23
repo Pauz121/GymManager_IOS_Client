@@ -1,0 +1,7 @@
+{
+  "kind": "POST_RELEASE_SWIFT_EXCLUSIVITY_FIX",
+  "path": "GymManagerClient/Core/ClientNutritionGenerator.swift",
+  "beforeSha256": "31ec6edf491d6bb81493f101873a6ec30302cf56e0ddaab94ba353a6834606c4",
+  "before": "            plan.generationMetadata?.structuralSignature = ClientNutritionPlanValidator.signature(plan)\n",
+  "after": "            let structuralSignature = ClientNutritionPlanValidator.signature(plan)\n            plan.generationMetadata?.structuralSignature = structuralSignature\n"
+}

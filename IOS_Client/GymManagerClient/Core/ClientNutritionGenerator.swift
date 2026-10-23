@@ -106,7 +106,8 @@ enum ClientNutritionGenerator {
                 mealEnergyTolerance: ClientNutritionCoachRules.mealEnergyTolerance,
                 mealProteinTolerance: ClientNutritionCoachRules.mealProteinTolerance,
                 rationale: explanations(energy: energy, profile: profile), structuralSignature: "")
-            plan.generationMetadata?.structuralSignature = ClientNutritionPlanValidator.signature(plan)
+            let structuralSignature = ClientNutritionPlanValidator.signature(plan)
+            plan.generationMetadata?.structuralSignature = structuralSignature
             if ClientNutritionPlanValidator.inspect(plan, context: context, catalog: catalog).isEmpty {
                 return ClientPlanEditing.beginNutrition(plan)
             }
