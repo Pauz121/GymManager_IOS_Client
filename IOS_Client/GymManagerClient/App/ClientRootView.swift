@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ClientRootView: View {
     @EnvironmentObject private var session: ClientSessionStore
+    @EnvironmentObject private var appearance: ClientAppearanceStore
 
     var body: some View {
         Group {
@@ -12,7 +13,12 @@ struct ClientRootView: View {
                     VStack(spacing: 16) {
                         Image(systemName: "figure.strengthtraining.traditional")
                             .font(.system(size: 46, weight: .semibold)).foregroundStyle(ClientClay.accent)
-                        ProgressView("Prepariamo il tuo spazio…").tint(ClientClay.accent)
+                        if session.readPhase == .idle {
+                            Text("Caricamento in pausa").foregroundStyle(ClientClay.secondaryInk)
+                            Button("Riprova") { Task { await session.prepare() } }
+                        } else {
+                            ProgressView("Prepariamo il tuo spazio…").tint(ClientClay.accent)
+                        }
                     }
                 }
             case .onboarding:
@@ -21,6 +27,7 @@ struct ClientRootView: View {
                 ClientEmailConfirmationView(email: email)
             case .active(let identity, let snapshot, let source):
                 ClientTabView(identity: identity, snapshot: snapshot, source: source)
+                    .clientFloatingRestTimer()
                     .fullScreenCover(isPresented: Binding(
                         get: { session.shouldOfferTrainerCode },
                         set: { _ in }
@@ -39,7 +46,9 @@ struct ClientRootView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        // Phase7 adoption completed in source: sheets and navigation inherit the
+        // same preference; System delegates to iOS instead of a second override.
+        .clientAppearance(appearance.preference)
         .alert("GymManager", isPresented: Binding(
             get: { session.notice != nil },
             set: { if !$0 { session.notice = nil } }

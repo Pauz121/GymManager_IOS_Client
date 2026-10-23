@@ -1,27 +1,29 @@
 import SwiftUI
 
 enum ClientClay {
-    static let canvas = Color(red: 0.043, green: 0.043, blue: 0.051)
-    static let canvasWarm = Color(red: 0.075, green: 0.071, blue: 0.078)
-    static let surface = Color(red: 0.082, green: 0.082, blue: 0.090)
-    static let surfaceDeep = Color(red: 0.114, green: 0.114, blue: 0.125)
-    static let surfaceElevated = Color(red: 0.145, green: 0.141, blue: 0.153)
-    static let inset = Color(red: 0.059, green: 0.059, blue: 0.067)
-    static let ink = Color(red: 0.957, green: 0.957, blue: 0.965)
-    static let inkSoft = Color(red: 0.831, green: 0.831, blue: 0.847)
-    static let secondaryInk = Color(red: 0.631, green: 0.631, blue: 0.667)
-    static let tertiaryInk = Color(red: 0.443, green: 0.443, blue: 0.478)
-    static let accent = Color(red: 1.000, green: 0.310, blue: 0.196)
-    static let accentHot = Color(red: 1.000, green: 0.208, blue: 0.161)
-    static let accentSoft = Color(red: 1.000, green: 0.690, blue: 0.604)
-    static let sage = Color(red: 0.188, green: 0.820, blue: 0.345)
-    static let sageSoft = Color(red: 0.082, green: 0.220, blue: 0.125)
-    static let runAccent = Color(red: 0.110, green: 0.765, blue: 0.925)
-    static let gold = Color(red: 1.000, green: 0.624, blue: 0.039)
-    static let warning = Color(red: 1.000, green: 0.624, blue: 0.039)
-    static let border = Color.white.opacity(0.08)
-    static let radius: CGFloat = 22
-    static let pagePadding: CGFloat = 16
+    // Phase7: legacy API names now use the same adaptive semantic palette.
+    // Asset and domain colors remain separate from UI surfaces.
+    static let canvas = ClientColorRole.backgroundPrimary.adaptiveColor
+    static let canvasWarm = ClientColorRole.backgroundSecondary.adaptiveColor
+    static let surface = ClientColorRole.surfacePrimary.adaptiveColor
+    static let surfaceDeep = ClientColorRole.surfaceSecondary.adaptiveColor
+    static let surfaceElevated = ClientColorRole.surfaceElevated.adaptiveColor
+    static let inset = ClientColorRole.surfaceInteractive.adaptiveColor
+    static let ink = ClientColorRole.textPrimary.adaptiveColor
+    static let inkSoft = ClientColorRole.textEmphasis.adaptiveColor
+    static let secondaryInk = ClientColorRole.textSecondary.adaptiveColor
+    static let tertiaryInk = ClientColorRole.textTertiary.adaptiveColor
+    static let accent = ClientColorRole.brandAccent.adaptiveColor
+    static let accentHot = ClientColorRole.brandAccentPressed.adaptiveColor
+    static let accentSoft = ClientColorRole.brandAccentSoft.adaptiveColor
+    static let sage = ClientColorRole.success.adaptiveColor
+    static let sageSoft = ClientColorRole.successMuted.adaptiveColor
+    static let runAccent = ClientColorRole.runningAccent.adaptiveColor
+    static let gold = ClientColorRole.warning.adaptiveColor
+    static let warning = ClientColorRole.warning.adaptiveColor
+    static let border = ClientColorRole.borderSubtle.adaptiveColor
+    static let radius = ClientRadius.card
+    static let pagePadding = ClientSpacing.page
 
     static let brandGradient = LinearGradient(
         colors: [accent, accentHot],
@@ -30,21 +32,33 @@ enum ClientClay {
     )
 }
 
+enum ClientSurfaceAppearance: Equatable { case legacyDark, adaptive }
+
 struct ClayCardModifier: ViewModifier {
-    var padding: CGFloat = 18
+    var padding: CGFloat = ClientSpacing.legacyCardInset
+    var appearance: ClientSurfaceAppearance = .adaptive
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var colorScheme
+
+    private func color(_ role: ClientColorRole) -> Color {
+        appearance == .adaptive ? ClientClay.color(role) : role.color(for: .dark)
+    }
 
     func body(content: Content) -> some View {
-        content
+        let elevation = appearance == .legacyDark ? ClientElevation.legacyCard
+            : colorScheme == .dark ? ClientElevation.darkSurface : ClientElevation.lightSurface
+        return content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
-                    .fill(LinearGradient(colors: [ClientClay.surfaceDeep, ClientClay.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .shadow(color: .black.opacity(0.34), radius: 16, y: 9)
+                    .fill(LinearGradient(colors: [color(.surfaceSecondary), color(.surfacePrimary)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .shadow(color: ClientClay.shadow.opacity(elevation.opacity), radius: elevation.radius, y: elevation.y)
                     .overlay {
                         RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
-                            .stroke(.white.opacity(contrast == .increased ? 0.22 : 0.08), lineWidth: contrast == .increased ? 1.5 : 1)
+                            .stroke(appearance == .adaptive ? ClientClay.color(contrast == .increased ? .borderStrong : .borderSubtle)
+                                    : ClientClay.onDark.opacity(contrast == .increased ? 0.22 : 0.08),
+                                    lineWidth: contrast == .increased ? ClientBorder.emphasized : ClientBorder.subtle)
                     }
             }
     }
@@ -52,40 +66,47 @@ struct ClayCardModifier: ViewModifier {
 
 struct ClientPremiumCardModifier: ViewModifier {
     var tint: Color = ClientClay.accent
-    var padding: CGFloat = 20
+    var padding: CGFloat = ClientSpacing.group
 
     func body(content: Content) -> some View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(.white)
+            .foregroundStyle(ClientClay.ink)
             .background {
-                ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [ClientClay.surfaceElevated, ClientClay.surface, tint.opacity(0.22)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    Circle()
-                        .fill(tint.opacity(0.20))
-                        .frame(width: 150, height: 150)
-                        .blur(radius: 18)
-                        .offset(x: 52, y: -65)
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .stroke(.white.opacity(0.16), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .shadow(color: .black.opacity(0.42), radius: 20, y: 12)
+                ClientPremiumCardSurface(tint: tint)
             }
     }
 }
 
+/// Only the base shape participates in background layout. The decorative circle
+/// is an overlay: its fixed size cannot enlarge the background beyond the card.
+struct ClientPremiumCardSurface: View {
+    let tint: Color
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: ClientRadius.hero, style: .continuous)
+            .fill(LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface, tint.opacity(colorScheme == .dark ? 0.22 : 0.07)],
+                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(alignment: .topTrailing) {
+                Circle().fill(tint.opacity(colorScheme == .dark ? 0.20 : 0.06))
+                    .frame(width: 150, height: 150)
+                    .blur(radius: 18).offset(x: 52, y: -65)
+                    .allowsHitTesting(false)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: ClientRadius.hero, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: ClientRadius.hero, style: .continuous).stroke(ClientClay.border, lineWidth: ClientBorder.subtle) }
+            .shadow(color: ClientClay.shadow.opacity(colorScheme == .dark ? ClientElevation.darkSurface.opacity : ClientElevation.lightSurface.opacity), radius: ClientElevation.lightSurface.radius, y: ClientElevation.lightSurface.y)
+            .accessibilityHidden(true)
+    }
+}
+
 extension View {
-    func clayCard(padding: CGFloat = 18) -> some View { modifier(ClayCardModifier(padding: padding)) }
-    func premiumCard(tint: Color = ClientClay.accent, padding: CGFloat = 20) -> some View {
+    func clayCard(padding: CGFloat = ClientSpacing.legacyCardInset, appearance: ClientSurfaceAppearance = .adaptive) -> some View {
+        modifier(ClayCardModifier(padding: padding, appearance: appearance))
+    }
+    func premiumCard(tint: Color = ClientClay.accent, padding: CGFloat = ClientSpacing.group) -> some View {
         modifier(ClientPremiumCardModifier(tint: tint, padding: padding))
     }
     func clientPage() -> some View {
@@ -98,8 +119,8 @@ extension View {
     }
 
     func clientInputField() -> some View {
-        padding(.horizontal, 12)
-            .frame(minHeight: 48)
+        padding(.horizontal, ClientSpacing.control)
+            .frame(minHeight: ClientControlSize.input)
             .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(ClientClay.border) }
             .foregroundStyle(ClientClay.ink)
@@ -107,30 +128,32 @@ extension View {
 }
 
 struct ClayPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 50)
-            .background(configuration.isPressed ? AnyShapeStyle(ClientClay.accent.opacity(0.76)) : AnyShapeStyle(ClientClay.brandGradient))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .font(ClientTypography.button)
+            .foregroundStyle(ClientClay.color(.textOnAccent))
+            .frame(maxWidth: .infinity, minHeight: ClientControlSize.primaryButton)
+            .background(configuration.isPressed ? AnyShapeStyle(ClientClay.accentHot) : AnyShapeStyle(ClientClay.brandGradient))
+            .clipShape(RoundedRectangle(cornerRadius: ClientRadius.control, style: .continuous))
             .shadow(color: ClientClay.accent.opacity(0.25), radius: 10, y: 5)
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .animation(.snappy(duration: 0.18), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: configuration.isPressed)
     }
 }
 
 struct ClaySecondaryButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
+            .font(ClientTypography.button)
             .foregroundStyle(ClientClay.ink)
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: ClientControlSize.input)
             .background(configuration.isPressed ? ClientClay.surface : ClientClay.surfaceDeep)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 16).stroke(ClientClay.border) }
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.snappy(duration: 0.18), value: configuration.isPressed)
+            .clipShape(RoundedRectangle(cornerRadius: ClientRadius.control, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: ClientRadius.control).stroke(ClientClay.border) }
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: configuration.isPressed)
     }
 }
 
@@ -145,7 +168,7 @@ struct ClientSectionHeader: View {
                 if let symbol {
                     Image(systemName: symbol).foregroundStyle(ClientClay.accent)
                 }
-                Text(title).font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
+                Text(title).font(ClientTypography.section).foregroundStyle(ClientClay.ink)
             }
             Spacer()
             if let detail {
@@ -196,7 +219,7 @@ struct ClientPageTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(eyebrow.uppercased()).font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(ClientClay.accent)
-            Text(title).font(.system(.largeTitle, design: .rounded, weight: .bold)).foregroundStyle(ClientClay.ink)
+            Text(title).font(ClientTypography.page).foregroundStyle(ClientClay.ink)
             if let subtitle { Text(subtitle).font(.subheadline).foregroundStyle(ClientClay.secondaryInk) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -250,6 +273,7 @@ struct ClientFailureView: View {
             Label("Connessione non disponibile", systemImage: "wifi.exclamationmark")
         } description: { Text(message) } actions: {
             Button("Riprova", action: retry).buttonStyle(.borderedProminent).tint(ClientClay.accent)
+                .foregroundStyle(ClientClay.color(.textOnAccent))
         }
     }
 }

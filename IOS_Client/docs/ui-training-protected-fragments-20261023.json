@@ -1,0 +1,80 @@
+[
+  {
+    "path": "Features/Workout/ClientWorkoutView.swift",
+    "start": "private struct ClientWorkoutPlanDetailView",
+    "end": "",
+    "sha256": "AAAF6D3AA34ADB5CB9B0EBD3DB5DDB2CF2FD2EFFA09533607EB523A1240E3007"
+  },
+  {
+    "path": "Features/Workout/ClientActivityDashboardView.swift",
+    "start": "private enum ClientActivityFormat",
+    "end": "",
+    "sha256": "1B669BB8A4748D40243FB7CD0588FEABE272174E02E50E25D352CCAE0887BC16"
+  },
+  {
+    "path": "Features/Workout/ClientActivityDashboardView.swift",
+    "start": "    private func moveMonth",
+    "end": "struct ClientActivityRecapView",
+    "sha256": "2D3D66DC532BA3BF6FFDB73967289113A2B3C0B896F9361E60EE524EADE1E968"
+  },
+  {
+    "path": "App/ClientTabView.swift",
+    "start": "struct ClientTabView",
+    "end": "private struct ClientPremiumTabBar",
+    "sha256": "FFA3C549824002C6284EA74A7C394AA0B04E61254CFB47DCB90F265DE4EE0F4A"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "    private var results:",
+    "end": "    private var personalBestSection:",
+    "sha256": "E20AB366A19A99A116520DB3D6D8686E26064E27CE5263723F4183A20F4B8663"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "        .onAppear {",
+    "end": "    private var activeView:",
+    "sha256": "460F262439732BAC9669199139D4BC9F2EB6221BA82AB09D3418A8BCEC9839B0"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "        .onChange(of: location.route)",
+    "end": "    @ViewBuilder private var locationBanner:",
+    "sha256": "38DB3166EFBF7EC358A2B02C910F25CBFAD1CE5C6FA9C8CD6529D257ACD67029"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "    private func liveChartValue",
+    "end": "    private func liveMetric",
+    "sha256": "73484705B78BBDE61E018921B498083FE7C6EFB3A5E0AB181E5F4B7F4753B856"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "    private func handleCompletedSplit",
+    "end": "private struct ClientRunningCompletionView:",
+    "sha256": "3BB4724ABF5E53A2519CF1BF2858FBF1885B64C814BA7ADF7C9C7E829E1B7DE8"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "    private var visibleRoute:",
+    "end": "    var body: some View",
+    "sha256": "F3234E953223944D27D6C50A877C899BA34EEEA7BC667828BDFA382B37BC6B12"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "    private var personalBestSummary:",
+    "end": "    private func summaryMetric",
+    "sha256": "ADA6640AAA24640FFB9FE1ECB6E4C51EF589118AD1FB88656DB5A81D06FE629F"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "    private func replay()",
+    "end": "private struct ClientPersonalBestDetailView",
+    "sha256": "720C9EA325E025DD9D661B91E529339710441E5C9BC01849DAFFCE3EBE2293EF"
+  },
+  {
+    "path": "Features/Running/ClientRunningView.swift",
+    "start": "private struct ClientPersonalBestDetailView",
+    "end": "",
+    "sha256": "247C14BF1D7A8828DA91044B3D85AB39A545661581AB2C9ED1529C6656E6B544"
+  }
+]

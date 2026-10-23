@@ -10,7 +10,9 @@ final class ClientRepository {
         self.client = client
     }
 
-    func identity(authUserID: UUID, email: String?) async throws -> ClientIdentity {
+    func identity(authUserID: UUID, email: String?, requestID: UUID = UUID()) async throws -> ClientIdentity {
+        try Task.checkCancellation()
+        ClientLoadDiagnostics.record("AUTH", requestID: requestID, event: "start", stage: "profile")
         let profiles: [ClientProfileRow] = try await client
             .from("profiles")
             .select("id,username,display_name,role,status,is_active,first_name,last_name,biological_sex,client_onboarding_completed_at")
@@ -19,11 +21,14 @@ final class ClientRepository {
             .execute()
             .value
 
+        try Task.checkCancellation()
         guard let profile = profiles.first else {
             throw ClientAppError.message("Il profilo Cliente non è ancora disponibile.")
         }
         guard profile.role == "client" else { throw ClientAppError.unsupportedRole }
         guard profile.status == "active", profile.isActive == true else { throw ClientAppError.inactiveProfile }
+        ClientLoadDiagnostics.record("AUTH", requestID: requestID, event: "success", stage: "profile", sessionReady: true)
+        ClientLoadDiagnostics.record("HOME", requestID: requestID, event: "start", stage: "client_identity", sessionReady: true)
 
         let links: [ClientLinkRow] = try await client
             .from("clients")
@@ -33,6 +38,7 @@ final class ClientRepository {
             .execute()
             .value
 
+        try Task.checkCancellation()
         guard links.count <= 1 else { throw ClientAppError.duplicateClientLinks }
         if let link = links.first {
             guard link.authUserID == authUserID, link.status == "active" else { throw ClientAppError.invalidClientLink }
@@ -83,21 +89,74 @@ final class ClientRepository {
         }
     }
 
-    func snapshot(for identity: ClientIdentity, today: Date = Date()) async -> ClientSnapshot {
-        guard let clientID = identity.clientID, let trainerID = identity.trainerID else { return .empty }
+    func snapshot(for identity: ClientIdentity, previous: ClientSnapshot? = nil,
+                  requestID: UUID = UUID(), today: Date = Date()) async throws -> ClientSnapshot {
+        try Task.checkCancellation()
+        guard identity.mode == .trainerConnected else { return .empty }
+        guard let clientID = identity.clientID, let trainerID = identity.trainerID else {
+            throw ClientAppError.invalidClientLink
+        }
+        // The shared SDK obtains/refreshes the actual session before any content read.
+        let activeSession = try await client.auth.session
+        try Task.checkCancellation()
+        guard activeSession.user.id == identity.authUserID else { throw AuthError.sessionMissing }
+        ClientLoadDiagnostics.record("HOME", requestID: requestID, event: "prerequisites_ready", stage: "content_gate",
+                                     sessionReady: true, clientReady: true, trainerReady: true, prerequisitesReady: true)
         var snapshot = ClientSnapshot.empty
 
-        do { snapshot.workout = try await workout(clientID: clientID, trainerID: trainerID, today: today) }
-        catch { snapshot.warnings.append(Self.contentWarning("Allenamento", error: error)) }
-        do { snapshot.nutrition = try await nutrition(clientID: clientID, trainerID: trainerID) }
-        catch { snapshot.warnings.append(Self.contentWarning("Nutrizione", error: error)) }
-        do { snapshot.appointments = try await appointments(clientID: clientID, trainerID: trainerID, trainerName: identity.trainerName, today: today) }
-        catch { snapshot.warnings.append(Self.contentWarning("Appuntamenti", error: error)) }
-        do { snapshot.progress = try await progress(clientID: clientID, trainerID: trainerID) }
-        catch { snapshot.warnings.append(Self.contentWarning("Progressi", error: error)) }
+        try beginRead(.workout, requestID: requestID)
+        do {
+            snapshot.workout = try await workout(clientID: clientID, trainerID: trainerID, today: today)
+            snapshot.setContentState(snapshot.workout == nil ? .empty : .loaded, for: .workout)
+            finishRead(.workout, requestID: requestID)
+        } catch { try recordFailure(.workout, error: error, requestID: requestID, snapshot: &snapshot) }
+        try beginRead(.nutrition, requestID: requestID)
+        do {
+            snapshot.nutrition = try await nutrition(clientID: clientID, trainerID: trainerID)
+            snapshot.setContentState(snapshot.nutrition == nil ? .empty : .loaded, for: .nutrition)
+            finishRead(.nutrition, requestID: requestID)
+        } catch { try recordFailure(.nutrition, error: error, requestID: requestID, snapshot: &snapshot) }
+        try beginRead(.appointments, requestID: requestID)
+        do {
+            snapshot.appointments = try await appointments(clientID: clientID, trainerID: trainerID, trainerName: identity.trainerName, today: today)
+            snapshot.setContentState(snapshot.appointments.isEmpty ? .empty : .loaded, for: .appointments)
+            finishRead(.appointments, requestID: requestID)
+        } catch { try recordFailure(.appointments, error: error, requestID: requestID, snapshot: &snapshot) }
+        try beginRead(.progress, requestID: requestID)
+        do {
+            snapshot.progress = try await progress(clientID: clientID, trainerID: trainerID)
+            snapshot.setContentState(snapshot.progress.isEmpty ? .empty : .loaded, for: .progress)
+            finishRead(.progress, requestID: requestID)
+        } catch { try recordFailure(.progress, error: error, requestID: requestID, snapshot: &snapshot) }
 
+        try Task.checkCancellation()
+        snapshot.retainFailedSections(from: previous)
         snapshot.updates = Self.updates(from: snapshot)
         return snapshot
+    }
+
+    private func beginRead(_ section: ClientContentSection, requestID: UUID) throws {
+        try Task.checkCancellation()
+        ClientLoadDiagnostics.record(section.rawValue, requestID: requestID, event: "start", stage: "read",
+                                     sessionReady: true, clientReady: true, trainerReady: true)
+    }
+
+    private func finishRead(_ section: ClientContentSection, requestID: UUID) {
+        ClientLoadDiagnostics.record(section.rawValue, requestID: requestID, event: "success", stage: "read",
+                                     sessionReady: true, clientReady: true, trainerReady: true)
+    }
+
+    private func recordFailure(_ section: ClientContentSection, error: Error, requestID: UUID,
+                               snapshot: inout ClientSnapshot) throws {
+        let cancelled = Task.isCancelled || ClientRefreshErrorPolicy.isCancellation(error)
+        ClientLoadDiagnostics.record(section.rawValue, requestID: requestID,
+                                     event: cancelled ? "cancel" : "failure", stage: "read",
+                                     code: ClientRefreshErrorPolicy.diagnosticCode(for: error),
+                                     sessionReady: true, clientReady: true, trainerReady: true)
+        if cancelled { throw CancellationError() }
+        let warning = Self.contentWarning(section.title, error: error)
+        snapshot.setContentState(.failed(warning), for: section)
+        snapshot.warnings.append(warning)
     }
 
     private func workout(clientID: UUID, trainerID: UUID, today: Date) async throws -> ClientWorkoutPlan? {
@@ -120,7 +179,7 @@ final class ClientRepository {
             .execute().value
         let dayIDs = days.map { $0.id.uuidString }
         let exercises: [WorkoutExerciseRow] = dayIDs.isEmpty ? [] : try await client.from("workout_plan_exercises")
-            .select("id,workout_day_id,sets,repetitions,rest_seconds,load_kg,notes,exercise_order,exercise:exercises(id,name,muscle_group,instructions,video_url,source_key)")
+            .select("id,workout_day_id,sets,repetitions,rest_seconds,load_kg,notes,exercise_order,exercise:exercises(*,muscle_links:exercise_muscle_groups(relevance,muscle_group:muscle_groups(id,name,source_key)))")
             .in("workout_day_id", values: dayIDs)
             .order("exercise_order", ascending: true)
             .execute().value
@@ -233,9 +292,8 @@ final class ClientRepository {
     }
 
     private static func contentWarning(_ section: String, error: Error) -> String {
-        let diagnostic = String(describing: error).lowercased()
-        if diagnostic.contains("42501") || diagnostic.contains("permission denied") || diagnostic.contains("row-level security") {
-            return "\(section): accesso non autorizzato. Verifica il collegamento con il Trainer."
+        if let error = error as? PostgrestError, error.code == "42501" {
+            return "\(section): accesso ai dati non autorizzato. Riprova o contatta l’assistenza."
         }
         return "\(section): caricamento non riuscito. Trascina verso il basso per riprovare."
     }
@@ -251,15 +309,7 @@ private struct ClientProfileRow: Decodable { let id: UUID; let username: String;
 private struct ClientLinkRow: Decodable { let id: UUID; let authUserID: UUID?; let trainerID: UUID; let firstName: String; let lastName: String; let status: String; let biologicalSex: String?; enum CodingKeys: String, CodingKey { case id, status; case authUserID = "auth_user_id"; case trainerID = "trainer_id"; case firstName = "first_name"; case lastName = "last_name"; case biologicalSex = "biological_sex" } }
 private struct WorkoutPlanRow: Decodable { let id: UUID; let clientID: UUID?; let trainerID: UUID; let title: String; let status: String; let planKind: String; let publishedAt: String?; let startsOn: String?; let endsOn: String?; let durationWeeks: Int?; let currentWeek: Int; enum CodingKeys: String, CodingKey { case id, title, status; case clientID = "client_id"; case trainerID = "trainer_id"; case planKind = "plan_kind"; case publishedAt = "published_at"; case startsOn = "starts_on"; case endsOn = "ends_on"; case durationWeeks = "duration_weeks"; case currentWeek = "current_week" }; func isPublishedFor(clientID: UUID, trainerID: UUID) -> Bool { self.clientID == clientID && self.trainerID == trainerID && status == "active" && planKind == "client_plan" && publishedAt != nil } }
 private struct WorkoutDayRow: Decodable { let id: UUID; let workoutPlanID: UUID; let name: String; let weekday: Int?; let dayOrder: Int; enum CodingKeys: String, CodingKey { case id, name, weekday; case workoutPlanID = "workout_plan_id"; case dayOrder = "day_order" } }
-private struct ExerciseRow: Decodable {
-    let id: UUID?; let name: String; let muscleGroup: String?; let instructions: String?; let videoURL: String?; let sourceKey: String?
-    enum CodingKeys: String, CodingKey {
-        case id, name, instructions
-        case muscleGroup = "muscle_group"
-        case videoURL = "video_url"
-        case sourceKey = "source_key"
-    }
-}
+private typealias ExerciseRow = ClientExerciseCatalogRecord
 private struct WorkoutExerciseRow: Decodable {
     let id: UUID; let workoutDayID: UUID; let sets: Int?; let repetitions: String?; let restSeconds: Int?; let loadKg: Double?; let notes: String?; let exerciseOrder: Int; let exercise: ExerciseRow?
     enum CodingKeys: String, CodingKey {
@@ -270,7 +320,7 @@ private struct WorkoutExerciseRow: Decodable {
         case exerciseOrder = "exercise_order"
     }
     var clientExercise: ClientExercise {
-        let metadata = ClientExerciseMetadataNormalizer.enrich(ClientExerciseCatalogItem(
+        let metadata = ClientExerciseMetadataNormalizer.enrich(exercise?.catalogItem ?? ClientExerciseCatalogItem(
             id: exercise?.id ?? id,
             name: exercise?.name ?? "Esercizio",
             muscleGroup: exercise?.muscleGroup,
@@ -284,7 +334,8 @@ private struct WorkoutExerciseRow: Decodable {
             catalogExerciseID: exercise?.id, catalogSourceKey: metadata.sourceKey,
             primaryMuscles: metadata.primaryMuscles, secondaryMuscles: metadata.secondaryMuscles,
             movementPattern: metadata.movementPattern, animationKey: metadata.animationKey,
-            technique: metadata.instructions
+            technique: metadata.instructions, difficultyLevel: metadata.difficultyLevel,
+            catalogMuscles: metadata.catalogMuscles
         )
     }
 }

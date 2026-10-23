@@ -15,7 +15,7 @@ struct ClientOnboardingView: View {
                         .frame(width: 92, height: 92)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .shadow(color: ClientClay.accent.opacity(0.26), radius: 24, y: 10)
-                    Text("FIT MANAGER")
+                    Text("GYMMANAGER")
                         .font(.system(.largeTitle, design: .rounded, weight: .black))
                         .tracking(1.8)
                         .foregroundStyle(ClientClay.ink)
@@ -87,7 +87,7 @@ private struct ClientRegistrationView: View {
 
     private var personalDataStep: some View {
         VStack(alignment: .leading, spacing: 22) {
-            ClientPageTitle("I tuoi dati", eyebrow: "Account Fit Manager", subtitle: "Inserisci le informazioni di base del tuo profilo.")
+            ClientPageTitle("I tuoi dati", eyebrow: "Account GymManager", subtitle: "Inserisci le informazioni di base del tuo profilo.")
             VStack(alignment: .leading, spacing: 14) {
                 registrationField("Nome", text: $input.firstName, contentType: .givenName, field: .firstName)
                 inlineIssue(for: .firstName, attempted: attemptedStepOne)
@@ -127,7 +127,7 @@ private struct ClientRegistrationView: View {
 
     private var credentialsStep: some View {
         VStack(alignment: .leading, spacing: 22) {
-            ClientPageTitle("Crea le credenziali", eyebrow: "Account Fit Manager", subtitle: "Scegli uno username e una password sicura.")
+            ClientPageTitle("Crea le credenziali", eyebrow: "Account GymManager", subtitle: "Scegli uno username e una password sicura.")
             VStack(alignment: .leading, spacing: 14) {
                 registrationField("Username", text: $input.username, contentType: .username, field: .username)
                     .textInputAutocapitalization(.never)
@@ -163,7 +163,7 @@ private struct ClientRegistrationView: View {
                 } label: {
                     if session.isSubmitting {
                         HStack(spacing: 10) {
-                            ProgressView().tint(.white)
+                            ProgressView().tint(ClientClay.color(.textOnAccent))
                             Text("Creazione account…")
                         }
                     } else {
@@ -243,7 +243,7 @@ struct ClientEmailConfirmationView: View {
                     } label: {
                         if session.isSubmitting {
                             HStack(spacing: 10) {
-                                ProgressView().tint(.white)
+                                ProgressView().tint(ClientClay.color(.textOnAccent))
                                 Text("Verifica account…")
                             }
                         } else {
@@ -391,7 +391,7 @@ private struct ClientSignInView: View {
                         .textContentType(.password)
                         .clientInputField()
                     Button { Task { await session.signIn(identifier: identifier, password: password) } } label: {
-                        if session.isSubmitting { ProgressView().tint(.white) } else { Text("Accedi") }
+                        if session.isSubmitting { ProgressView().tint(ClientClay.color(.textOnAccent)) } else { Text("Accedi") }
                     }
                     .buttonStyle(ClayPrimaryButtonStyle())
                     .disabled(session.isSubmitting || identifier.isEmpty || password.isEmpty)

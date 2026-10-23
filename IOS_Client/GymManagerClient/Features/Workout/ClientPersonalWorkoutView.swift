@@ -4,6 +4,7 @@ struct ClientPersonalWorkoutLibraryView: View {
     let allowsEditing: Bool
     @EnvironmentObject private var session: ClientSessionStore
     @State private var modal: ClientPersonalWorkoutModal?
+    @State private var pendingModal: ClientPersonalWorkoutModal?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -51,17 +52,16 @@ struct ClientPersonalWorkoutLibraryView: View {
                 }
             }
         }
-        .sheet(item: $modal) { destination in
+        .sheet(item: $modal, onDismiss: presentPendingModal) { destination in
             switch destination {
             case .creation:
                 ClientWorkoutCreationChoiceView { choice in
-                    replaceModal(afterDismissWith: choice == .manual ? .editor(Self.newPlan()) : .guided)
+                    replaceModal(afterDismissWith: choice == .manual ? .manual : .guided)
                 }
+            case .manual:
+                ClientManualWorkoutWizard(onSaved: { modal = nil })
             case .editor(let plan):
-                ClientPersonalWorkoutPlanEditor(plan: plan) { updated in
-                    session.savePersonalWorkoutPlan(updated)
-                    modal = nil
-                }
+                ClientPersonalWorkoutPlanEditor(plan: plan, onSaved: { modal = nil })
             case .guided:
                 ClientGuidedWorkoutView(
                     onSaved: { modal = nil },
@@ -69,6 +69,7 @@ struct ClientPersonalWorkoutLibraryView: View {
                 )
             }
         }
+        .onDisappear { pendingModal = nil }
     }
 
     private var libraryDetail: String {
@@ -166,22 +167,29 @@ struct ClientPersonalWorkoutLibraryView: View {
     }
 
     private func replaceModal(afterDismissWith destination: ClientPersonalWorkoutModal) {
+        pendingModal = destination
         modal = nil
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(220))
-            modal = destination
-        }
+    }
+
+    private func presentPendingModal() {
+        let destination = pendingModal
+        pendingModal = nil
+        guard allowsEditing, case .active(let identity, _, _) = session.state,
+              ClientAccessPolicy.canManagePersonalWorkoutPlans(in: identity.mode) else { return }
+        modal = destination
     }
 }
 
 private enum ClientPersonalWorkoutModal: Identifiable {
     case creation
+    case manual
     case editor(ClientPersonalWorkoutPlan)
     case guided
 
     var id: String {
         switch self {
         case .creation: "creation"
+        case .manual: "manual"
         case .editor(let plan): "editor-\(plan.id.uuidString)"
         case .guided: "guided"
         }
@@ -190,11 +198,31 @@ private enum ClientPersonalWorkoutModal: Identifiable {
 
 private struct ClientPersonalWorkoutPlanEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: ClientSessionStore
     @State private var draft: ClientPersonalWorkoutPlan
-    let onSave: (ClientPersonalWorkoutPlan) -> Void
+    @State private var catalog: [ClientExerciseCatalogItem] = []
+    @State private var loading = true
+    @State private var ownerID: UUID?
+    @State private var saveState: ClientWorkoutCoachSaveState = .localDraft
+    @State private var showDiscard = false
+    let onSaved: () -> Void
 
-    init(plan: ClientPersonalWorkoutPlan, onSave: @escaping (ClientPersonalWorkoutPlan) -> Void) {
-        _draft = State(initialValue: plan); self.onSave = onSave
+    init(plan: ClientPersonalWorkoutPlan, onSaved: @escaping () -> Void) {
+        _draft = State(initialValue: plan); self.onSaved = onSaved
+    }
+    private var isCoach: Bool { draft.generationMetadata != nil }
+    private var saving: Bool { saveState == .saving }
+    private var confirmed: Bool { if case .confirmed = saveState { return true }; return false }
+    private var validation: ClientEditedWorkoutPlanValidator.Result? {
+        isCoach && !loading ? ClientEditedWorkoutPlanValidator().inspect(draft, catalog: catalog) : nil
+    }
+    private var coach: ClientWorkoutCoachEditingContext? {
+        guard isCoach, let answers = draft.generationAnswers else { return nil }
+        return .init(answers: answers, catalog: catalog)
+    }
+    private var canSave: Bool {
+        !loading && !saving && draft.title.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+            && !draft.sessions.isEmpty && (!isCoach || validation?.canSave == true)
     }
 
     var body: some View {
@@ -207,79 +235,132 @@ private struct ClientPersonalWorkoutPlanEditor: View {
                         Text("Attiva").tag(ClientPersonalPlanStatus.active)
                         Text("Archiviata").tag(ClientPersonalPlanStatus.archived)
                     }
-                    if draft.source == .guided {
-                        Picker("Durata programma", selection: Binding(
-                            get: { draft.durationWeeks ?? 8 },
-                            set: { draft.durationWeeks = $0 }
-                        )) {
-                            ForEach([4, 6, 8, 12], id: \.self) { Text("\($0) settimane").tag($0) }
+                    if isCoach {
+                        Text("Programma di \(draft.durationWeeks ?? 0) settimane. Per cambiare preferenze o durata, torna al questionario.")
+                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    } else if draft.source == .guided {
+                        Picker("Durata programma", selection: Binding(get: { draft.durationWeeks ?? 8 }, set: { draft.durationWeeks = $0 })) {
+                            ForEach([4,6,8,12], id: \.self) { Text("\($0) settimane").tag($0) }
                         }
-                        Label("Programma guidato · sempre modificabile", systemImage: "wand.and.stars")
-                            .font(.caption).foregroundStyle(.secondary)
                     }
+                    Text(draft.status == .active ? "Salvando attiverai questa scheda e archivierai la precedente." : "La scheda non verrà attivata automaticamente.")
+                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                 }
-                Section("Sessioni") {
+                Section {
+                    if loading { ProgressView("Preparazione editor…") }
                     ForEach($draft.sessions) { $workout in
-                        NavigationLink { ClientPersonalWorkoutSessionEditor(workout: $workout) } label: {
-                            VStack(alignment: .leading) {
+                        NavigationLink {
+                            ClientPersonalWorkoutSessionEditor(workout: $workout, coach: coach)
+                        } label: {
+                            VStack(alignment: .leading, spacing: ClientSpacing.micro) {
                                 Text(workout.name).font(.headline)
-                                Text("\(workout.exercises.count) esercizi").font(.caption).foregroundStyle(.secondary)
+                                Text("\(workout.exercises.count) esercizi").font(.subheadline).foregroundStyle(.secondary)
                             }
                         }
+                        .disabled(isCoach && coach == nil)
+                        .deleteDisabled(isCoach)
                     }
                     .onDelete { draft.sessions.remove(atOffsets: $0) }
                     .onMove { draft.sessions.move(fromOffsets: $0, toOffset: $1) }
-                    Button("Aggiungi sessione", systemImage: "plus") {
-                        draft.sessions.append(ClientPersonalWorkoutSession(id: UUID(), name: "Nuova sessione", weekday: nil, exercises: []))
+                    if !isCoach {
+                        Button("Aggiungi sessione", systemImage: "plus") {
+                            draft.sessions.append(.init(id: UUID(), name: "Nuova sessione", weekday: nil, exercises: []))
+                        }
+                    }
+                } header: { Text("Sessioni") } footer: {
+                    Text(isCoach ? "Rinomina, riordina e modifica gli esercizi. Scorri una riga a sinistra per sostituirla. Ogni modifica viene ricontrollata." : "Modifica liberamente la tua scheda personale.")
+                }
+                if let validation, !validation.canSave {
+                    Section("Da correggere prima di salvare") {
+                        ForEach(validation.messages, id: \.self) { Label($0, systemImage: "exclamationmark.triangle") }
+                    }
+                }
+                Section {
+                    Text(saveState.message).font(.subheadline)
+                    if isCoach && !loading && catalog.isEmpty {
+                        Button("Ricarica catalogo") { Task { await loadEditor(forceReload: true) } }
                     }
                 }
             }
+            .disabled(saving || confirmed || loading)
+            .interactiveDismissDisabled()
             .scrollContentBackground(.hidden).background(ClientClay.canvas)
             .navigationTitle("Modifica scheda").navigationBarTitleDisplayMode(.inline)
+            .task { await loadEditor() }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Annulla") { showDiscard = true }.disabled(saving || confirmed) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Salva") { draft.updatedAt = Date(); onSave(draft); dismiss() }
-                        .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || draft.sessions.isEmpty)
+                    if confirmed {
+                        Button("Fine") { onSaved(); dismiss() }
+                    } else {
+                        Button(saving ? "Verifica…" : "Salva") {
+                            guard canSave else { return }
+                            draft.updatedAt = Date(); saveState = .saving
+                            Task { @MainActor in
+                                saveState = await session.saveWorkoutCoachPlan(validation?.plan ?? draft, catalog: catalog, expectedOwnerID: ownerID)
+                                if case .confirmed = saveState { ClientHaptics.success() } else { ClientHaptics.warning() }
+                            }
+                        }.disabled(!canSave)
+                    }
                 }
-                ToolbarItem(placement: .topBarTrailing) { EditButton() }
+                ToolbarItem(placement: .topBarTrailing) { EditButton().disabled(saving || confirmed || loading) }
             }
+            .confirmationDialog("Scartare le modifiche non confermate?", isPresented: $showDiscard, titleVisibility: .visible) {
+                Button("Esci", role: .destructive) { dismiss() }
+                Button("Continua a modificare", role: .cancel) {}
+            } message: { Text("Eventuali copie già conservate sul dispositivo non vengono eliminate.") }
         }
+    }
+    private func loadEditor(forceReload: Bool = false) async {
+        if ownerID == nil, case .active(let identity, _, _) = session.state { ownerID = identity.authUserID }
+        loading = true
+        if isCoach { catalog = await session.personalExerciseCatalog(forceReload: forceReload) }
+        loading = false
     }
 }
 
 private struct ClientPersonalWorkoutSessionEditor: View {
     @Binding var workout: ClientPersonalWorkoutSession
+    var coach: ClientWorkoutCoachEditingContext? = nil
     @State private var showPicker = false
+    @State private var replacement: ClientPersonalExercise?
+    private var usedIDs: Set<UUID> { Set(workout.exercises.compactMap(\.catalogExerciseID)) }
+    private var addCandidates: [ClientWorkoutCatalogPolicy.Candidate]? {
+        coach.map { $0.candidates.filter { !usedIDs.contains($0.item.id) && $0.primary.isSubset(of: Set(workout.targetMuscles ?? [])) } }
+    }
 
     var body: some View {
         Form {
             Section("Sessione") {
                 TextField("Nome", text: $workout.name)
                 Picker("Giorno", selection: $workout.weekday) {
-                    Text("Libero").tag(Int?.none)
-                    ForEach(Array(["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"].enumerated()), id: \.offset) { index, name in
+                    if coach == nil { Text("Libero").tag(Int?.none) }
+                    ForEach(Array(["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"].enumerated()), id: \.offset) { index, name in
                         Text(name).tag(Int?.some(index + 1))
                     }
                 }
-                Stepper(
-                    "Durata target: \(workout.durationMinutes ?? 60) min",
-                    value: Binding(get: { workout.durationMinutes ?? 60 }, set: { workout.durationMinutes = $0 }),
-                    in: 30...120,
-                    step: 15
-                )
+                if coach == nil {
+                    Stepper("Durata target: \(workout.durationMinutes ?? 60) min",
+                        value: Binding(get: { workout.durationMinutes ?? 60 }, set: { workout.durationMinutes = $0 }), in: 30...120, step: 15)
+                } else {
+                    Text("Durata stimata: \(ClientWorkoutCoachRules.minutes(workout.exercises)) min, inclusi i recuperi.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
             }
             Section("Esercizi") {
                 ForEach($workout.exercises) { $exercise in
-                    NavigationLink { ClientPersonalExerciseEditor(exercise: $exercise) } label: {
-                        VStack(alignment: .leading) {
+                    NavigationLink { ClientPersonalExerciseEditor(exercise: $exercise, isCoach: coach != nil) } label: {
+                        VStack(alignment: .leading, spacing: ClientSpacing.micro) {
                             Text(exercise.name).font(.headline)
-                            Text("\(exercise.sets) × \(exercise.repetitions) · recupero \(exercise.restSeconds)s").font(.caption).foregroundStyle(.secondary)
+                            Text("\(exercise.sets) × \(exercise.repetitions) · recupero \(exercise.restSeconds)s").font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Duplica", systemImage: "plus.square.on.square") { duplicateExercise(exercise.id) }
-                            .tint(ClientClay.accent)
+                        if coach != nil {
+                            Button("Sostituisci", systemImage: "arrow.triangle.2.circlepath") { replacement = exercise }
+                        } else {
+                            Button("Duplica", systemImage: "plus.square.on.square") { duplicateExercise(exercise.id) }.tint(ClientClay.accent)
+                        }
                     }
                 }
                 .onDelete { workout.exercises.remove(atOffsets: $0) }
@@ -290,28 +371,40 @@ private struct ClientPersonalWorkoutSessionEditor: View {
         .scrollContentBackground(.hidden).background(ClientClay.canvas)
         .navigationTitle(workout.name).toolbar { EditButton() }
         .sheet(isPresented: $showPicker) {
-            ClientExercisePickerSheet { exercise in workout.exercises.append(exercise); showPicker = false }
+            ClientExercisePickerSheet(coachCandidates: addCandidates) { exercise in
+                workout.exercises.append(exercise); showPicker = false
+            }
+        }
+        .sheet(item: $replacement) { original in
+            ClientExercisePickerSheet(coachCandidates: coach?.alternatives(to: original, usedIDs: usedIDs), replacing: original) { exercise in
+                if let index = workout.exercises.firstIndex(where: { $0.id == original.id }) { workout.exercises[index] = exercise }
+                replacement = nil
+            }
         }
     }
-
     private func duplicateExercise(_ id: UUID) {
         guard let index = workout.exercises.firstIndex(where: { $0.id == id }) else { return }
-        var copy = workout.exercises[index]
-        copy.id = UUID()
+        var copy = workout.exercises[index]; copy.id = UUID()
         workout.exercises.insert(copy, at: index + 1)
     }
 }
 
 private struct ClientPersonalExerciseEditor: View {
     @Binding var exercise: ClientPersonalExercise
+    var isCoach = false
+    private var minimumRest: Int { isCoach ? (exercise.exerciseKind == .compound ? 90 : 45) : 0 }
     var body: some View {
         Form {
             Section("Prescrizione") {
-                Stepper("Serie: \(exercise.sets)", value: $exercise.sets, in: 1...20)
+                Stepper("Serie: \(exercise.sets)", value: $exercise.sets, in: 1...(isCoach ? 5 : 20))
                 TextField("Ripetizioni", text: $exercise.repetitions)
-                Stepper("Recupero: \(exercise.restSeconds)s", value: $exercise.restSeconds, in: 0...600, step: 15)
-                TextField("Carico kg", value: $exercise.loadKg, format: .number).keyboardType(.decimalPad)
-                TextField("RIR / RPE", text: $exercise.effortTarget)
+                Stepper("Recupero: \(exercise.restSeconds)s", value: $exercise.restSeconds, in: minimumRest...(isCoach ? 300 : 600), step: 15)
+                Text("Il carico reale si registra durante l'allenamento.").font(.subheadline).foregroundStyle(.secondary)
+                if isCoach {
+                    Picker("RIR prescritto", selection: $exercise.effortTarget) {
+                        ForEach(1...4, id: \.self) { Text("RIR \($0)").tag("RIR \($0)") }
+                    }
+                } else { TextField("RIR / RPE", text: $exercise.effortTarget) }
             }
             Section("Indicazioni") { TextField("Note operative", text: $exercise.notes, axis: .vertical) }
         }
@@ -325,54 +418,73 @@ private struct ClientExercisePickerSheet: View {
     @State private var query = ""
     @State private var results: [ClientExerciseCatalogItem] = []
     @State private var customName = ""
+    let coachCandidates: [ClientWorkoutCatalogPolicy.Candidate]?
+    let replacing: ClientPersonalExercise?
     let onSelect: (ClientPersonalExercise) -> Void
 
+    init(coachCandidates: [ClientWorkoutCatalogPolicy.Candidate]? = nil, replacing: ClientPersonalExercise? = nil,
+         onSelect: @escaping (ClientPersonalExercise) -> Void) {
+        self.coachCandidates = coachCandidates; self.replacing = replacing; self.onSelect = onSelect
+    }
     var body: some View {
         NavigationStack {
             List {
-                Section("Database esercizi") {
-                    if results.isEmpty { Text(query.isEmpty ? "Cerca nel catalogo globale" : "Nessun esercizio trovato").foregroundStyle(.secondary) }
+                Section(replacing == nil ? "Database esercizi" : "Alternative compatibili") {
+                    if results.isEmpty {
+                        Text(coachCandidates == nil ? "Cerca nel catalogo globale" : "Nessuna variante verificata con questi vincoli. Mantieni l'esercizio o rivedi il programma.")
+                            .foregroundStyle(.secondary)
+                    }
                     ForEach(results) { item in
                         Button { onSelect(makeExercise(item)) } label: {
-                            VStack(alignment: .leading) { Text(item.name); if let group = item.muscleGroup { Text(group).font(.caption).foregroundStyle(.secondary) } }
+                            VStack(alignment: .leading) {
+                                Text(item.name)
+                                if let group = item.muscleGroup { Text(group).font(.subheadline).foregroundStyle(.secondary) }
+                            }.frame(minHeight: ClientControlSize.minimumTarget)
                         }
                     }
                 }
-                Section("Esercizio personale") {
-                    TextField("Nome esercizio", text: $customName)
-                    Button("Aggiungi esercizio personale", systemImage: "person.badge.plus") {
-                        let exercise = ClientPersonalExercise(
-                            id: UUID(), catalogExerciseID: nil,
-                            name: customName.trimmingCharacters(in: .whitespacesAndNewlines), muscleGroup: "",
-                            sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil,
-                            effortTarget: "RIR 2", notes: "", videoURL: nil
-                        )
-                        session.savePersonalExercise(exercise)
-                        onSelect(exercise)
+                if coachCandidates == nil {
+                    Section("Esercizio personale") {
+                        TextField("Nome esercizio", text: $customName)
+                        Button("Aggiungi esercizio personale", systemImage: "person.badge.plus") {
+                            let exercise = ClientPersonalExercise(id: UUID(), catalogExerciseID: nil,
+                                name: customName.trimmingCharacters(in: .whitespacesAndNewlines), muscleGroup: "",
+                                sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil, effortTarget: "RIR 2", notes: "", videoURL: nil)
+                            session.savePersonalExercise(exercise); onSelect(exercise)
+                        }.disabled(customName.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                     }
-                        .disabled(customName.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
+                } else {
+                    Text("Stesso ruolo muscolare e di movimento per le sostituzioni; attrezzatura, esclusioni e difficoltà verificati. Nessuna sostituzione casuale.")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             .searchable(text: $query, prompt: "Nome esercizio")
             .task(id: query) {
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                results = await session.searchPersonalExercises(query)
+                if let coachCandidates {
+                    results = coachCandidates.map(\.item).filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+                } else {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    let matches = await session.searchPersonalExercises(query)
+                    guard !Task.isCancelled else { return }
+                    results = matches
+                }
             }
-            .navigationTitle("Aggiungi esercizio").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
+            .navigationTitle(replacing == nil ? "Aggiungi esercizio" : "Sostituisci esercizio")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
         }
     }
-
     private func makeExercise(_ item: ClientExerciseCatalogItem) -> ClientPersonalExercise {
+        if let candidate = coachCandidates?.first(where: { $0.item.id == item.id }) {
+            return ClientWorkoutCoachEditingContext.exercise(candidate, replacing: replacing)
+        }
         let metadata = ClientExerciseMetadataNormalizer.enrich(item)
-        return ClientPersonalExercise(
-            id: UUID(), catalogExerciseID: metadata.id, catalogSourceKey: metadata.sourceKey,
+        return ClientPersonalExercise(id: UUID(), catalogExerciseID: metadata.id, catalogSourceKey: metadata.sourceKey,
             name: metadata.name, muscleGroup: metadata.primaryMuscles.first?.displayName ?? metadata.muscleGroup ?? "",
-            sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil,
-            effortTarget: "RIR 2", notes: "", videoURL: metadata.videoURL,
+            sets: 3, repetitions: "10", restSeconds: 90, loadKg: nil, effortTarget: "RIR 2", notes: "", videoURL: metadata.videoURL,
             primaryMuscles: metadata.primaryMuscles, secondaryMuscles: metadata.secondaryMuscles,
             movementPattern: metadata.movementPattern, compatibleEquipment: metadata.compatibleEquipment,
-            exerciseKind: metadata.kind, animationKey: metadata.animationKey, technique: metadata.instructions
-        )
+            exerciseKind: metadata.kind, animationKey: metadata.animationKey, technique: metadata.instructions,
+            difficultyLevel: metadata.difficultyLevel, catalogMuscles: metadata.catalogMuscles)
     }
 }

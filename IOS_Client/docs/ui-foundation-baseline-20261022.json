@@ -1,0 +1,213 @@
+{
+  "phase": "IOS_Client UI/UX foundation 1/7",
+  "date": "2026-10-22",
+  "commit": "49e67c8",
+  "note": "Baseline after prior local overlap/read-lifecycle fixes; those changes are preserved and not claimed as Phase 1 work.",
+  "files": [
+    {
+      "path": "App/ClientRootView.swift",
+      "sha256": "FD6DDBFD43989D1C2E7F97116F5E43BAE5AC828D45297509A614C243ACCC6541"
+    },
+    {
+      "path": "App/ClientTabView.swift",
+      "sha256": "90E393AB9FE074BC04E3EC6EBDDD37B506639B6D9F20ED37E90106DF71A1D537"
+    },
+    {
+      "path": "App/GymManagerClientApp.swift",
+      "sha256": "477B7F93EB6E548B7AEC6E55CB5FDEEC84FF7B26F54DEEC4D32090186EA8DAA7"
+    },
+    {
+      "path": "Core/ClientActivityInsights.swift",
+      "sha256": "04479F994714CF3A77AC2DC0C2607C7D17CEE30690C69F2613B8C4FD16AA9884"
+    },
+    {
+      "path": "Core/ClientActivityModels.swift",
+      "sha256": "58053FF1F1601A4147B1EAB3075A79A741CD14BE28A3DFC5FEE97114C7C0C282"
+    },
+    {
+      "path": "Core/ClientActivityStore.swift",
+      "sha256": "27207F7E66FD308863CB4C8163CE3608914020657BE8C3B76A7BA1A2BB2B6097"
+    },
+    {
+      "path": "Core/ClientAvatarStore.swift",
+      "sha256": "AA26F982BA3FAED4FC0F8999A6486D1BB44CFB7E6FC2A403002A55CF708E3E18"
+    },
+    {
+      "path": "Core/ClientCatalogMuscleMapping.swift",
+      "sha256": "A90647C0A225DCA07484F72038DF65770E31AD824081E3F58FEC19660C58E138"
+    },
+    {
+      "path": "Core/ClientCircularProgress.swift",
+      "sha256": "88F3BDB6815FA0FF3DE6D022E992A871D605FCF5C595366585F24881AABEEA32"
+    },
+    {
+      "path": "Core/ClientContentLoadState.swift",
+      "sha256": "5F3E5FBBEF8C72FB1E9BD829979C289FC69FEBA622F095CBA23ABD023E45BD92"
+    },
+    {
+      "path": "Core/ClientContentStatusView.swift",
+      "sha256": "A8DC131B0715A243492EA2754682AE776A9ACDEB8ECCA48A5D3E8C9FA3152F55"
+    },
+    {
+      "path": "Core/ClientDesignSystem.swift",
+      "sha256": "98BA74B530E1092A78480856E230EE97FEB3A848465AABCA9E272C8E24DD35C5"
+    },
+    {
+      "path": "Core/ClientExerciseDifficultyPolicy.swift",
+      "sha256": "9A51B5E8F060CE2C4C0F7442FB5E388E360F263695F9E9392297E4918CCDD33F"
+    },
+    {
+      "path": "Core/ClientExerciseVisualModels.swift",
+      "sha256": "ABF7C4D85BA5F8F3CC3DF6556DAA35A872B142DCEAC4DC7B2A29097C175B3317"
+    },
+    {
+      "path": "Core/ClientHaptics.swift",
+      "sha256": "6363685DC595BD1C24C8D70E02D8B5A6D673B3EF6623E468B205F4F80EA00834"
+    },
+    {
+      "path": "Core/ClientManualWorkoutDraft.swift",
+      "sha256": "7DE6A9B99099909D8F2AC557532E039A0FBCD3C1F4850B6B2803977073BB5BB5"
+    },
+    {
+      "path": "Core/ClientModels.swift",
+      "sha256": "680797D519C9DB238F4A49C2D37540E2A860059D8D904487923CE7C8FD67785D"
+    },
+    {
+      "path": "Core/ClientNutritionCreation.swift",
+      "sha256": "07D4F38B4FEB527B789E9099B88D3598A647E230DF1C0AC60AEB647A916DBF3F"
+    },
+    {
+      "path": "Core/ClientNutritionGenerator.swift",
+      "sha256": "A34FF62CD9493E028905453F5D179D2A95CBEEF5955866394C2849A01AA74ACE"
+    },
+    {
+      "path": "Core/ClientPersonalContent.swift",
+      "sha256": "505A319CE1EA3E58619C534B1C5C1B07B306745C764FB78CE257F746172995C1"
+    },
+    {
+      "path": "Core/ClientPersonalRepository.swift",
+      "sha256": "99F86BC3E7245C35CBEFD63E43BA72D8FFEA7C1F4A8C306C422AB2D62D5323DE"
+    },
+    {
+      "path": "Core/ClientRefreshErrorPolicy.swift",
+      "sha256": "2CB8FB477E961B04A00DE6ED421F346D9BEA2CC4C0DCDCFFAE77F83CF79F2AD4"
+    },
+    {
+      "path": "Core/ClientRepository.swift",
+      "sha256": "28C73C6D60DD50BC38D261FAD0DBB2F738718F46CF9CAE8EDBF214C1866B8EE0"
+    },
+    {
+      "path": "Core/ClientRunLiveActivityManager.swift",
+      "sha256": "3DB0F58C9297126B725C9A9A33E3EBE5730B79AA962009BD02582B53CD80CDDA"
+    },
+    {
+      "path": "Core/ClientSessionStore.swift",
+      "sha256": "C4C8F8E8F37DC03C006F2075FFCE8678399390168AB8B3F36D0C787280A4D840"
+    },
+    {
+      "path": "Core/ClientSupabase.swift",
+      "sha256": "10348BFD6ADAB42462F25967F520A2E1669D5B18C988C9013CA3F4BA043B72A0"
+    },
+    {
+      "path": "Core/ClientWorkoutGenerator.swift",
+      "sha256": "00B78EAAACBA498397BB83FB46059E394B568A5C5D83C1127A285A9B1453108E"
+    },
+    {
+      "path": "Core/HealthKitStepService.swift",
+      "sha256": "DA73C51452E8960F56C833B10264DCB74D86D5CA5958EF16431C67E33B28F91A"
+    },
+    {
+      "path": "Core/PersonalAgendaStore.swift",
+      "sha256": "76AF7512F779781230E8784C26BACF2B592272FECF1BE1EFB59D5A71F5A1911D"
+    },
+    {
+      "path": "Core/RunningLocationService.swift",
+      "sha256": "953334A0EE4A6E359E6DE01B265D6DAFD235DA21EDE008E249A62D9FE38D93C5"
+    },
+    {
+      "path": "Demo/ClientDemoData.swift",
+      "sha256": "4CC9413D58BEFB74A39E6F57EE7E81745BEF128C55F74486C54FC981297658BF"
+    },
+    {
+      "path": "Features/Home/ClientHomeView.swift",
+      "sha256": "1499A6B9BDBEB7F0C6FE390CD62DAD2F5FA726404936C6E13E72418771ED9909"
+    },
+    {
+      "path": "Features/Nutrition/ClientNutritionCreationWizard.swift",
+      "sha256": "ACFD361AF945EF7B7B4694DD8607C40CB8E5EE9AE25A894A65C75D6B3F1CDE0F"
+    },
+    {
+      "path": "Features/Nutrition/ClientNutritionView.swift",
+      "sha256": "9B34EE0B6F5FA2798B2C9C713005E306BACAD443162803EC8957DFFA533278E5"
+    },
+    {
+      "path": "Features/Nutrition/ClientPersonalNutritionView.swift",
+      "sha256": "76E2D1E9505C98FE69EA8537D6DEAA6EFE3A0545048BDB1A51D80D5A6BD64509"
+    },
+    {
+      "path": "Features/Onboarding/ClientOnboardingView.swift",
+      "sha256": "F49FD7D53E6CDD21F65EE417E240C8B6CC674A4837211507ECF476E4F3853C3C"
+    },
+    {
+      "path": "Features/Progress/ClientProgressView.swift",
+      "sha256": "C008D211EC5581E59752875B3251DE4604CD6613589D6CE42F442F06DB70D5D1"
+    },
+    {
+      "path": "Features/Running/ClientRunningView.swift",
+      "sha256": "C7D7DDC0291A3AD1954C639CE5358A92B9A3F53083DD55FB8F100E8B46A241C5"
+    },
+    {
+      "path": "Features/Space/ClientAccountView.swift",
+      "sha256": "6F970FC8EDAAE56C8D92EC0D39E49F4F14DBE5F4ECDDA07E5E5D6DD39A8623C6"
+    },
+    {
+      "path": "Features/Space/ClientUpdatesView.swift",
+      "sha256": "1E65CE78309835BCB6FB16D13B9E008A1D17A95E5CF148BD9E9D21547890CE6C"
+    },
+    {
+      "path": "Features/Space/PersonalAgendaView.swift",
+      "sha256": "7A5FB226409135963ED3D487F036A31B8E7A4D02A23E1A9735CFAA9441B35A3A"
+    },
+    {
+      "path": "Features/Space/PersonalSpaceView.swift",
+      "sha256": "2B8D7D659FCFC957C1F435543D4908CA6D9663F09C192B10CCF601703FF8B134"
+    },
+    {
+      "path": "Features/Workout/ClientActivityDashboardView.swift",
+      "sha256": "42D3627908850C6177F1E2A0DC8215DE7554E41F77DAE4857FA2341F185CEED8"
+    },
+    {
+      "path": "Features/Workout/ClientAnatomyMap.swift",
+      "sha256": "91936DA445BF4CB063CCAAA1CD227DFF6FAE391B74AD6FA488C2C258A324E105"
+    },
+    {
+      "path": "Features/Workout/ClientExerciseVisualCard.swift",
+      "sha256": "B648661D7FE42D2CC00BB05D9DE6B822B49C935177C25F433F96954DE84C4941"
+    },
+    {
+      "path": "Features/Workout/ClientGuidedWorkoutView.swift",
+      "sha256": "AA96EB7071662DBD92C0A0A858CBCFDB62459891211D35FC7D081480BA92F8E7"
+    },
+    {
+      "path": "Features/Workout/ClientManualWorkoutWizard.swift",
+      "sha256": "564E6D4C3511DF4D1281B702EC89D01F940A31AB1A70BA755202F88CB3081061"
+    },
+    {
+      "path": "Features/Workout/ClientPersonalWorkoutView.swift",
+      "sha256": "036C05349885CF945DFA67A0140C9664C8B676F8C0FB372F08C8AA6101B0074A"
+    },
+    {
+      "path": "Features/Workout/ClientWorkoutExecutionView.swift",
+      "sha256": "4DBDB47E81240D354B5D43940DF6F151D402AEA011D76D531D587361D24E038B"
+    },
+    {
+      "path": "Features/Workout/ClientWorkoutView.swift",
+      "sha256": "00C068445C152EC880A7EF616378F375334E31B9C414E228EAF5E22D956C9C6C"
+    }
+  ],
+  "allowedModified": [
+    "Core/ClientDesignSystem.swift",
+    "App/GymManagerClientApp.swift",
+    "App/ClientRootView.swift"
+  ]
+}

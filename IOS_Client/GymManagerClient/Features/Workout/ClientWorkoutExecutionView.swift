@@ -9,6 +9,9 @@ struct ClientWorkoutExecutionView: View {
     @State private var repetitionsDraft: [String: String] = [:]
     @State private var loadDraft: [String: String] = [:]
     @State private var noteExercise: ClientExercise?
+    @State private var detailExercise: ClientExercise?
+    @State private var selectedExerciseID: UUID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingFeedback = false
     @State private var showingExitConfirmation = false
     @FocusState private var focusedField: String?
@@ -22,8 +25,14 @@ struct ClientWorkoutExecutionView: View {
     }
 
     private var visualExercise: ClientExercise? {
-        workoutSession.exercises.first { exerciseLog(for: $0.id)?.isCompleted != true }
+        if let timer = session.activity.restTimer,
+           let resting = workoutSession.exercises.first(where: { $0.id == timer.exerciseID }) { return resting }
+        return workoutSession.exercises.first { exerciseLog(for: $0.id)?.isCompleted != true }
             ?? workoutSession.exercises.last
+    }
+
+    private var focusedExercise: ClientExercise? {
+        selectedExerciseID.flatMap { id in workoutSession.exercises.first { $0.id == id } } ?? visualExercise
     }
 
     var body: some View {
@@ -31,13 +40,36 @@ struct ClientWorkoutExecutionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
-                    if let visualExercise {
-                        ClientExerciseVisualCard(exercise: visualExercise, isResting: session.activity.restTimer != nil)
-                            .id(visualExercise.id)
-                    }
-                    ForEach(workoutSession.exercises) { exercise in
+                    if execution?.isCompleted == true {
+                        completionSummary
+                    } else if let exercise = focusedExercise {
                         exerciseCard(exercise)
+                        if let index = workoutSession.exercises.firstIndex(where: { $0.id == exercise.id }),
+                           index + 1 < workoutSession.exercises.count {
+                            let next = workoutSession.exercises[index + 1]
+                            Button {
+                                selectedExerciseID = next.id
+                            } label: {
+                                Label("Prossimo: \(next.name)", systemImage: "arrow.right.circle")
+                                    .frame(minHeight: ClientControlSize.minimumTarget)
+                                    .multilineTextAlignment(.leading)
+                            }.tint(ClientClay.color(.brandAccent))
+                                .anchorPreference(key: ClientWorkoutAvoidanceKey.self, value: .bounds) { [$0] }
+                        }
                     }
+                    DisclosureGroup("Tutti gli esercizi · \(workoutSession.exercises.count)") {
+                        ForEach(workoutSession.exercises) { exercise in
+                            Button {
+                                if execution?.isCompleted == true { detailExercise = exercise }
+                                else { selectedExerciseID = exercise.id }
+                            } label: {
+                                Label(exercise.name, systemImage: exerciseLog(for: exercise.id)?.isCompleted == true ? "checkmark.circle.fill" : "circle")
+                                    .frame(maxWidth: .infinity, minHeight: ClientControlSize.minimumTarget, alignment: .leading)
+                                    .foregroundStyle(ClientClay.color(.textPrimary))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    .anchorPreference(key: ClientWorkoutAvoidanceKey.self, value: .bounds) { [$0] }
                 }
                 .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
             }
@@ -54,9 +86,6 @@ struct ClientWorkoutExecutionView: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 8) {
                 VStack(spacing: 8) {
-                    if let timer = session.activity.restTimer {
-                        ClientRestTimerBar(timer: timer)
-                    }
                     if allExercisesComplete, execution?.isCompleted != true {
                         Button { showingFeedback = true } label: {
                             Label("Termina allenamento", systemImage: "checkmark.seal.fill")
@@ -67,8 +96,10 @@ struct ClientWorkoutExecutionView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(ClientClay.canvas.opacity(0.97))
+                .anchorPreference(key: ClientWorkoutAvoidanceKey.self, value: .bounds) { [$0] }
             }
             .onAppear {
+                session.finishRestTimerIfElapsed()
                 session.beginWorkout(plan: plan, workoutSession: workoutSession)
                 prepareDrafts()
             }
@@ -80,9 +111,17 @@ struct ClientWorkoutExecutionView: View {
                 )
                 .presentationDetents([.medium])
             }
-            .sheet(isPresented: $showingFeedback) {
-                PostWorkoutSheet(sessionID: workoutSession.id) { dismiss() }
+            .sheet(item: $detailExercise) { exercise in
+                ClientExerciseDetailSheet(plan: plan, workout: workoutSession, exercise: exercise)
                     .presentationDetents([.large])
+            }
+            .sheet(isPresented: $showingFeedback) {
+                PostWorkoutSheet(sessionID: workoutSession.id) { showingFeedback = false }
+                    .presentationDetents([.large])
+            }
+            .onChange(of: execution?.completedExerciseCount) { _, _ in
+                selectedExerciseID = nil
+                focusedField = nil
             }
             .confirmationDialog("Interrompere l'allenamento?", isPresented: $showingExitConfirmation, titleVisibility: .visible) {
                 Button("Esci · i progressi restano salvati") { dismiss() }
@@ -97,21 +136,22 @@ struct ClientWorkoutExecutionView: View {
                 }
             }
         }
+        .clientFloatingRestTimer()
     }
 
     private var header: some View {
         let completed = execution?.completedExerciseCount ?? 0
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("SESSIONE ATTIVA").font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.64))
-            Text(plan.title).font(.title2.weight(.heavy)).foregroundStyle(.white)
-            Text("Settimana \(plan.currentWeek) · \(workoutSession.name)")
-                .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+            Text(execution?.isCompleted == true ? "Sessione completata" : "Sessione in corso").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.color(.textSecondary))
+            Text(workoutSession.name).font(.title3.weight(.bold)).foregroundStyle(ClientClay.color(.textPrimary))
+            Text("\(plan.title) · Settimana \(plan.currentWeek)")
+                .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
             ClientProgressSegmentBar(completed: completed, total: workoutSession.exercises.count, tint: ClientClay.sage)
             Text("\(completed) / \(workoutSession.exercises.count) esercizi completati")
-                .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.72))
+                .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.color(.textSecondary))
         }
-        .premiumCard(tint: completed == workoutSession.exercises.count ? ClientClay.sage : ClientClay.accent)
+        .padding(.vertical, ClientSpacing.related)
     }
 
     private func exerciseCard(_ exercise: ClientExercise) -> some View {
@@ -123,8 +163,11 @@ struct ClientWorkoutExecutionView: View {
                     if isCurrent {
                         Text("ESERCIZIO ATTIVO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(ClientClay.accent)
                     }
-                    Text(exercise.name.uppercased()).font(.headline)
-                    Text(prescription(for: exercise)).font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    Button { detailExercise = exercise } label: {
+                        Label(exercise.name.uppercased(), systemImage: "figure.strengthtraining.traditional")
+                            .font(.headline).frame(minHeight: 44).multilineTextAlignment(.leading)
+                    }.buttonStyle(.plain).accessibilityHint("Apri tecnica, anatomia e prescrizione")
+                    ClientExercisePrescriptionView(exercise: exercise)
                 }
                 Spacer()
                 if log?.isCompleted == true {
@@ -139,18 +182,53 @@ struct ClientWorkoutExecutionView: View {
             if let notes = exercise.notes, !notes.isEmpty {
                 Label(notes, systemImage: "text.bubble").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
             }
+            if let startedAt = execution?.startedAt,
+               let previousLoad = ClientActivityInsights.previousExerciseLoad(exerciseID: exercise.id, state: session.activity, before: startedAt) {
+                Label("Ultima volta: \(previousLoad.formatted()) kg", systemImage: "clock.arrow.circlepath")
+                    .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
+            }
 
-            ForEach(1...exercise.setCount, id: \.self) { number in
-                setRow(exercise: exercise, number: number, log: log?.sets.first { $0.number == number })
-                if number != exercise.setCount { Divider().opacity(0.35) }
+            if let current = log?.sets.first(where: { !$0.isCompleted }) {
+                Text("Serie \(current.number) di \(exercise.setCount)").font(.title3.weight(.bold))
+                setRow(exercise: exercise, number: current.number, log: current)
+                if current.number < exercise.setCount {
+                    Text("Poi: serie \(current.number + 1) · \(exercise.repetitions ?? "target della scheda")")
+                        .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
+                }
+            } else if log?.isCompleted == true {
+                Label("Esercizio completato", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(ClientClay.color(.success))
+            }
+            ForEach(log?.sets.filter(\.isCompleted) ?? []) { completedSet in
+                HStack {
+                    Label("Serie \(completedSet.number) · \(completedSetDescription(completedSet))", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline).foregroundStyle(ClientClay.color(.success))
+                    Spacer()
+                    Button("Annulla") { session.undoSet(sessionID: workoutSession.id, exerciseID: exercise.id, setNumber: completedSet.number) }
+                        .font(.caption).frame(minHeight: ClientControlSize.minimumTarget)
+                }
             }
         }
-        .clayCard()
+        .clayCard(padding: ClientSpacing.page, appearance: .adaptive)
         .overlay {
             RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
                 .stroke(isCurrent ? ClientClay.accent.opacity(0.72) : log?.isCompleted == true ? ClientClay.sage.opacity(0.34) : ClientClay.border, lineWidth: isCurrent ? 1.5 : 1)
         }
-        .shadow(color: isCurrent ? ClientClay.accent.opacity(0.12) : .clear, radius: 8)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: log?.sets.filter(\.isCompleted).count)
+        .anchorPreference(key: ClientWorkoutAvoidanceKey.self, value: .bounds) { [$0] }
+    }
+
+    private var completionSummary: some View {
+        VStack(alignment: .leading, spacing: ClientSpacing.control) {
+            Label("Allenamento completato", systemImage: "checkmark.seal.fill")
+                .font(.title2.weight(.bold)).foregroundStyle(ClientClay.color(.success))
+            Text("\(execution?.completedExerciseCount ?? 0) esercizi · \(execution?.exercises.flatMap(\.sets).filter(\.isCompleted).count ?? 0) serie registrate")
+                .font(.headline)
+            if let minutes = execution?.durationMinutes { Text("Durata: \(minutes) min").monospacedDigit() }
+            Text("I dettagli restano consultabili nella scheda e nello storico.").font(.subheadline)
+            Button("Torna alla giornata") { dismiss() }.buttonStyle(ClayPrimaryButtonStyle())
+        }.clayCard(padding: ClientSpacing.page, appearance: .adaptive)
+            .anchorPreference(key: ClientWorkoutAvoidanceKey.self, value: .bounds) { [$0] }
     }
 
     @ViewBuilder private func setRow(exercise: ClientExercise, number: Int, log: ClientSetLog?) -> some View {
@@ -275,48 +353,6 @@ private struct WorkoutElapsedView: View {
     }
 }
 
-private struct ClientRestTimerBar: View {
-    let timer: ClientRestTimerState
-    @EnvironmentObject private var session: ClientSessionStore
-    @State private var now = Date()
-    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        VStack(spacing: 9) {
-            Capsule().fill(ClientClay.accent).frame(height: 3).shadow(color: ClientClay.accent.opacity(0.28), radius: 5)
-            HStack {
-                Label("Recupero", systemImage: "timer").font(.headline).foregroundStyle(ClientClay.accentSoft)
-                Spacer()
-                Text(formatted(timer.remainingSeconds(at: now))).font(.title2.monospacedDigit().weight(.heavy)).foregroundStyle(ClientClay.ink)
-            }
-            HStack(spacing: 8) {
-                Button {
-                    if timer.phase == .paused { session.resumeRestTimer() }
-                    else { session.pauseRestTimer() }
-                } label: { Label(timer.phase == .paused ? "Riprendi" : "Pausa", systemImage: timer.phase == .paused ? "play.fill" : "pause.fill") }
-                Button("+30s") { session.adjustRestTimer(by: 30) }.monospacedDigit()
-                Button("Salta") { session.skipRestTimer() }
-            }
-            .font(.subheadline.weight(.semibold))
-            .buttonStyle(.bordered)
-            .tint(ClientClay.accent)
-        }
-        .padding(14)
-        .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 18).stroke(ClientClay.accent.opacity(0.34)) }
-        .shadow(color: .black.opacity(0.42), radius: 14, y: 7)
-        .onReceive(ticker) { date in
-            now = date
-            if timer.phase == .running, timer.remainingSeconds(at: date) == 0 {
-                session.finishRestTimerIfElapsed(at: date)
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private func formatted(_ seconds: Int) -> String { String(format: "%02d:%02d", seconds / 60, seconds % 60) }
-}
-
 private struct ExerciseNoteSheet: View {
     let sessionID: UUID
     let exercise: ClientExercise
@@ -395,7 +431,7 @@ private struct PostWorkoutSheet: View {
                 Button { value.wrappedValue = number } label: {
                     Text("\(number)").font(.headline).frame(maxWidth: .infinity, minHeight: 44)
                         .background(value.wrappedValue == number ? ClientClay.accent : ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                        .foregroundStyle(value.wrappedValue == number ? .white : ClientClay.ink)
+                        .foregroundStyle(value.wrappedValue == number ? ClientClay.color(.textOnAccent) : ClientClay.ink)
                 }
                 .buttonStyle(.plain)
             }

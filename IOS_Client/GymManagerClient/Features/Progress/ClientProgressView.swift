@@ -18,7 +18,9 @@ struct ClientProgressView: View {
 
     @EnvironmentObject private var session: ClientSessionStore
     @EnvironmentObject private var healthKit: HealthKitStepService
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    @State private var period: ClientProgressPeriod = .month
+    @State private var selectedWeightDate: Date?
 
     private struct MeasurementPoint: Identifiable {
         let id: String
@@ -50,11 +52,11 @@ struct ClientProgressView: View {
     }
 
     private var weights: [ClientProgressEntry] {
-        entries.filter { $0.weightKg != nil }.sorted { $0.recordedAt < $1.recordedAt }
+        ClientProgressPresentation.weights(entries, period: period)
     }
 
     private var latestWaist: Double? {
-        entries.sorted { $0.recordedAt > $1.recordedAt }.compactMap(\.waistCm).first
+        periodEntries.sorted { $0.recordedAt > $1.recordedAt }.compactMap(\.waistCm).first
     }
 
     private var latestHips: Double? {
@@ -62,11 +64,11 @@ struct ClientProgressView: View {
     }
 
     private var completedWorkouts: Int {
-        session.activity.workouts.filter(\.isCompleted).count
+        session.activity.workouts.filter { $0.completedAt.map { period.contains($0) } == true }.count
     }
 
     private var totalRunningDistance: Double {
-        session.activity.runningResults.compactMap(\.distanceKm).reduce(0, +)
+        periodRuns.compactMap(\.distanceKm).filter { $0.isFinite && $0 >= 0 }.reduce(0, +)
     }
 
     private var todaySteps: Int? {
@@ -76,12 +78,12 @@ struct ClientProgressView: View {
     }
 
     private var measurements: [MeasurementPoint] {
-        entries.flatMap { entry in
+        periodEntries.flatMap { entry in
             var result: [MeasurementPoint] = []
-            if let waist = entry.waistCm {
+            if let waist = entry.waistCm, waist.isFinite, waist > 0 {
                 result.append(MeasurementPoint(id: "vita-\(entry.id)", date: entry.recordedAt, value: waist, kind: "Vita"))
             }
-            if let hips = entry.hipsCm {
+            if let hips = entry.hipsCm, hips.isFinite, hips > 0 {
                 result.append(MeasurementPoint(id: "fianchi-\(entry.id)", date: entry.recordedAt, value: hips, kind: "Fianchi"))
             }
             return result
@@ -128,84 +130,53 @@ struct ClientProgressView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 ClientPageTitle("Progressi", eyebrow: "La tua evoluzione", subtitle: "Trend e risultati reali, leggibili in un colpo d’occhio.")
-                progressHero
-                ClientSectionHeader(title: "Oggi", detail: "Attività quotidiana", symbol: "sun.max.fill")
-                todayStepsCard
-                ClientSectionHeader(title: "Riepilogo", detail: "Dati registrati", symbol: "square.grid.2x2.fill")
-                kpiGrid
+                if session.contentState(for: .progress).isPending {
+                    ProgressView("Caricamento progressi").frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let message = session.contentState(for: .progress).failure {
+                    ClientContentFailureCard(title: "Progressi", message: message, isRefreshing: session.isRefreshing) {
+                        Task { await session.refresh() }
+                    }
+                }
+                Picker("Periodo dei progressi", selection: $period) {
+                    ForEach(ClientProgressPeriod.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: period) { _, _ in selectedWeightDate = nil }
+                if !weights.isEmpty { weightSection }
+                else if !session.contentState(for: .progress).isPending, session.contentState(for: .progress).failure == nil {
+                    Label("Nessun peso registrato nel periodo scelto.", systemImage: "scalemass").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                }
+                if !measurements.isEmpty { measurementsSection }
+                Text("Composizione corporea e foto progresso non sono disponibili in questa versione Client.")
+                    .font(.footnote).foregroundStyle(ClientClay.secondaryInk)
+                ClientSectionHeader(title: "Allenamento", detail: period.title, symbol: "dumbbell")
+                Text("\(completedWorkouts) sessioni in palestra · \(periodRuns.count) corse")
+                    .font(.headline).foregroundStyle(ClientClay.ink)
+                Text("Attività registrate su questo iPhone. La settimana corrente e la costanza restano visibili sotto.")
+                    .font(.footnote).foregroundStyle(ClientClay.secondaryInk)
                 weeklyWorkoutChart
                 activityHeatmapChart
+                if !periodRuns.isEmpty { runningSection }
+                todayStepsCard
 
-                if !weights.isEmpty { weightSection }
-                if !measurements.isEmpty { measurementsSection }
-                if !session.activity.runningResults.isEmpty { runningSection }
-
-                if entries.isEmpty, completedWorkouts == 0, session.activity.runningResults.isEmpty {
-                    ClientEmptyState(
-                        symbol: "chart.line.uptrend.xyaxis",
-                        title: "Il percorso inizia qui",
-                        message: "Peso, misure e attività completate costruiranno nel tempo una vista chiara dei tuoi progressi."
-                    )
-                }
             }
             .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
         }
         .clientPage()
         .navigationTitle("Progressi")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await session.refresh() }
         .task { await healthKit.refreshIfPreviouslyRequested() }
     }
 
-    private var progressHero: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(weights.isEmpty ? "PANORAMICA ATTIVITÀ" : "TENDENZA PESO")
-                        .font(.caption.weight(.bold)).tracking(1.2).foregroundStyle(.white.opacity(0.66))
-                    if let latest = weights.last, let value = latest.weightKg {
-                        HStack(alignment: .firstTextBaseline, spacing: 7) {
-                            Text(value.formatted(.number.precision(.fractionLength(1))))
-                                .font(.system(size: 46, weight: .heavy, design: .rounded)).monospacedDigit().foregroundStyle(.white)
-                            Text("kg").font(.headline).foregroundStyle(.white.opacity(0.62))
-                        }
-                        Text("Aggiornato il \(latest.recordedAt.formatted(date: .abbreviated, time: .omitted))")
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.68))
-                    } else {
-                        Text(completedWorkouts + session.activity.runningResults.count, format: .number)
-                            .font(.system(size: 46, weight: .heavy, design: .rounded)).monospacedDigit().foregroundStyle(.white)
-                        Text("sessioni registrate · aggiungi una rilevazione per costruire il trend")
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.68))
-                    }
-                }
-                Spacer()
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.title2.weight(.semibold)).foregroundStyle(ClientClay.accentSoft)
-                    .frame(width: 50, height: 50)
-                    .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            if let delta = recentWeightDelta {
-                ClientDirectionalBadge(
-                    text: "\(delta > 0 ? "+" : "")\(delta.formatted(.number.precision(.fractionLength(1)))) kg vs precedente",
-                    direction: abs(delta) < 0.05 ? nil : delta.sign
-                )
-            } else if weights.count == 1 {
-                ClientBadge(text: "Prima rilevazione", tint: ClientClay.inkSoft, symbol: "flag.fill")
-            }
-            HStack(spacing: 8) {
-                compactHeroMetric(value: "\(completedWorkouts)", label: "workout")
-                compactHeroMetric(value: session.activity.runningResults.isEmpty ? "—" : "\(session.activity.runningResults.count)", label: "corse")
-                compactHeroMetric(value: entries.isEmpty ? "—" : "\(entries.count)", label: "rilevazioni")
-            }
-        }
-        .premiumCard()
+    private var periodEntries: [ClientProgressEntry] {
+        entries.filter { period.contains($0.recordedAt) }
     }
-
-    private var recentWeightDelta: Double? {
-        guard weights.count > 1,
-              let latest = weights.last?.weightKg,
-              let previous = weights.dropLast().last?.weightKg else { return nil }
-        return latest - previous
+    private var periodRuns: [ClientRunningResult] {
+        session.activity.runningResults.filter { period.contains($0.completedAt) }
     }
+    private var recentWeightDelta: Double? { ClientProgressPresentation.delta(weights) }
 
     private var weightChartDomain: ClosedRange<Double> {
         let values = weights.compactMap(\.weightKg)
@@ -214,82 +185,16 @@ struct ClientProgressView: View {
         return max(0, minimum - padding)...(maximum + padding)
     }
 
-    private var heroTitle: String {
-        guard let first = weights.first?.weightKg, let last = weights.last?.weightKg, weights.count > 1 else {
-            return completedWorkouts > 0 ? "La costanza sta prendendo forma" : "Costruiamo il tuo trend"
-        }
-        let delta = last - first
-        if abs(delta) < 0.05 { return "Peso stabile nel periodo" }
-        return "\(delta > 0 ? "+" : "")\(delta.formatted(.number.precision(.fractionLength(1)))) kg nel periodo"
-    }
-
-    private var heroDetail: String {
-        guard let firstDate = weights.first?.recordedAt, let lastDate = weights.last?.recordedAt, weights.count > 1 else {
-            return "Ogni rilevazione rende l’andamento più significativo."
-        }
-        return "Dal \(firstDate.formatted(date: .abbreviated, time: .omitted)) al \(lastDate.formatted(date: .abbreviated, time: .omitted))"
-    }
-
-    private func compactHeroMetric(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.headline.monospacedDigit()).foregroundStyle(.white)
-            Text(label).font(.caption2).foregroundStyle(.white.opacity(0.62))
-        }
-        .padding(.horizontal, 11).padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-    }
-
-    private var kpiGrid: some View {
-        LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ClientMetricTile(
-                title: "Allenamenti",
-                value: completedWorkouts.formatted(),
-                detail: "Totale completati su questo iPhone",
-                symbol: "checkmark.seal.fill",
-                tint: ClientClay.sage
-            )
-            ClientMetricTile(
-                title: "Distanza corsa",
-                value: totalRunningDistance > 0 ? "\(totalRunningDistance.formatted(.number.precision(.fractionLength(1)))) km" : "—",
-                detail: session.activity.runningResults.isEmpty ? "Nessuna corsa salvata" : "Totale registrato",
-                symbol: "figure.run",
-                tint: ClientClay.accent
-            )
-            ClientMetricTile(
-                title: "Corse salvate",
-                value: session.activity.runningResults.count.formatted(),
-                detail: "Sessioni running registrate",
-                symbol: "figure.run.circle.fill",
-                tint: ClientClay.gold
-            )
-            ClientMetricTile(
-                title: "Rilevazioni",
-                value: entries.count.formatted(),
-                detail: "Peso e misure nel tempo",
-                symbol: "ruler.fill",
-                tint: ClientClay.accentSoft
-            )
-        }
-    }
-
     private var todayStepsCard: some View {
-        HStack(spacing: 18) {
-            ClientCircularProgress(
-                value: Double(todaySteps ?? 0), total: 10_000, title: "Passi oggi",
-                valueText: todaySteps?.formatted() ?? "—", detail: "di 10.000",
-                tint: todaySteps.map { $0 >= 10_000 ? ClientClay.sage : ClientClay.gold } ?? ClientClay.tertiaryInk,
-                size: 96
-            )
-            VStack(alignment: .leading, spacing: 6) {
-                Text("PASSI ODIERNI").font(.caption.weight(.bold)).tracking(1).foregroundStyle(ClientClay.gold)
-                Text(todaySteps == nil ? "Dato non disponibile" : "Movimento di oggi")
-                    .font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
-                Text(todaySteps == nil ? "Collega Apple Salute dalla Home." : source == .demo ? "Dati demo · nessun dato reale" : "Sincronizzati con Apple Salute")
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            }
+        LabeledContent {
+            Text(todaySteps?.formatted() ?? "Non disponibili").monospacedDigit()
+        } label: {
+            Label("Passi di oggi", systemImage: "figure.walk")
         }
-        .clayCard()
+        .font(.subheadline)
+        .foregroundStyle(ClientClay.ink)
+        .padding(.vertical, 8)
+        .accessibilityHint(source == .demo ? "Dati dimostrativi" : "Dato letto da Apple Salute; collega Salute dalla Home se non disponibile")
     }
 
     private var weeklyWorkoutChart: some View {
@@ -387,13 +292,25 @@ struct ClientProgressView: View {
             ClientSectionHeader(title: "Andamento peso", detail: "kg", symbol: "scalemass.fill")
             if let latest = weights.last, let value = latest.weightKg {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(value.formatted()).font(.system(size: 38, weight: .heavy, design: .rounded)).monospacedDigit()
+                    Text(value.formatted(.number.precision(.fractionLength(1)))).font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
                     Text("kg").font(.headline).foregroundStyle(ClientClay.secondaryInk)
                     Spacer()
-                    if let delta = recentWeightDelta {
-                        ClientDirectionalBadge(text: weightDeltaText ?? "", direction: abs(delta) < 0.05 ? nil : delta.sign)
-                    }
                 }
+                if let delta = recentWeightDelta {
+                    ClientDirectionalBadge(text: weightDeltaText ?? "", direction: abs(delta) < 0.05 ? nil : delta.sign)
+                }
+            }
+            if let previous = weights.dropLast().last, let value = previous.weightKg {
+                Text("Precedente: \(value.formatted(.number.precision(.fractionLength(1)))) kg · \(previous.recordedAt.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+            }
+            if let first = weights.first, let last = weights.last {
+                Text("\(first.recordedAt.formatted(date: .abbreviated, time: .omitted)) – \(last.recordedAt.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            }
+            if let date = selectedWeightDate, let entry = ClientProgressPresentation.nearest(to: date, in: weights), let value = entry.weightKg {
+                Text("\(entry.recordedAt.formatted(date: .abbreviated, time: .omitted)): \(value.formatted()) kg")
+                    .font(.subheadline.monospacedDigit()).foregroundStyle(ClientClay.ink)
             }
             if weights.count > 1 {
                 Chart(weights) { entry in
@@ -402,20 +319,23 @@ struct ClientProgressView: View {
                             .foregroundStyle(LinearGradient(colors: [ClientClay.accent.opacity(0.3), ClientClay.accent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                         LineMark(x: .value("Data", entry.recordedAt), y: .value("Peso", value))
                             .foregroundStyle(ClientClay.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                            .interpolationMethod(.catmullRom)
+                            .interpolationMethod(.linear)
                         PointMark(x: .value("Data", entry.recordedAt), y: .value("Peso", value))
                             .foregroundStyle(ClientClay.accent).symbolSize(48)
                     }
                 }
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).foregroundStyle(ClientClay.secondaryInk); AxisGridLine().foregroundStyle(.clear) } }
-                .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(ClientClay.border); AxisValueLabel().foregroundStyle(ClientClay.secondaryInk) } }
+                .clientMeasurementChart()
+                .chartXSelection(value: $selectedWeightDate)
                 .chartYScale(domain: weightChartDomain)
                 .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
                 .frame(height: 210)
                 .accessibilityLabel("Grafico andamento del peso")
+                .accessibilityValue(weights.map { "\($0.recordedAt.formatted(date: .abbreviated, time: .omitted)): \($0.weightKg?.formatted() ?? "—") kg" }.joined(separator: "; "))
+            } else {
+                Text("Aggiungi una seconda rilevazione per vedere il trend.").font(.footnote).foregroundStyle(ClientClay.secondaryInk)
             }
         }
-        .clayCard()
+        .padding(.vertical, 8)
     }
 
     private var weightDeltaText: String? {
@@ -436,7 +356,7 @@ struct ClientProgressView: View {
                     measurementSummary(title: "Fianchi", value: latestHips)
                 }
             }
-            if Set(measurements.map(\.date)).count > 1 {
+            if Dictionary(grouping: measurements, by: \.kind).values.contains(where: { Set($0.map(\.date)).count > 1 }) {
                 Chart(measurements) { point in
                     LineMark(x: .value("Data", point.date), y: .value("Centimetri", point.value))
                         .foregroundStyle(by: .value("Misura", point.kind))
@@ -445,14 +365,13 @@ struct ClientProgressView: View {
                         .foregroundStyle(by: .value("Misura", point.kind))
                 }
                 .chartForegroundStyleScale(["Vita": ClientClay.accent, "Fianchi": ClientClay.sage])
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).foregroundStyle(ClientClay.secondaryInk); AxisGridLine().foregroundStyle(.clear) } }
-                .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(ClientClay.border); AxisValueLabel().foregroundStyle(ClientClay.secondaryInk) } }
+                .clientMeasurementChart()
                 .chartPlotStyle { plotArea in plotArea.background(ClientClay.inset.opacity(0.55), in: RoundedRectangle(cornerRadius: 12)) }
                 .frame(height: 200)
                 .accessibilityLabel("Grafico andamento delle misure corporee")
             }
         }
-        .clayCard()
+        .padding(.vertical, 8)
     }
 
     private func measurementSummary(title: String, value: Double?) -> some View {
@@ -462,14 +381,12 @@ struct ClientProgressView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ClientClay.border) }
     }
 
     private var runningSection: some View {
-        let recent = Array(session.activity.runningResults.sorted { $0.completedAt > $1.completedAt }.prefix(3))
+        let recent = Array(periodRuns.sorted { $0.completedAt > $1.completedAt }.prefix(3))
         return VStack(alignment: .leading, spacing: 14) {
-            ClientSectionHeader(title: "Running", detail: "Ultime attività", symbol: "figure.run")
+            ClientSectionHeader(title: "Running", detail: "\(totalRunningDistance.formatted(.number.precision(.fractionLength(1)))) km nel periodo", symbol: "figure.run")
             ForEach(Array(recent.enumerated()), id: \.element.id) { index, result in
                 HStack(spacing: 13) {
                     Image(systemName: "figure.run.circle.fill").font(.title2).foregroundStyle(ClientClay.accent)

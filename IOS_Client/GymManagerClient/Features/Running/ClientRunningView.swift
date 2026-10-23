@@ -17,6 +17,7 @@ struct ClientRunningView: View {
     let plan: ClientRunningPlan
     @EnvironmentObject private var session: ClientSessionStore
     @EnvironmentObject private var location: RunningLocationService
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingRunner = false
     @State private var selectedResult: ClientRunningResult?
     @State private var selectedTarget: ClientRunningTarget?
@@ -30,8 +31,6 @@ struct ClientRunningView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(activeRun == nil ? "PRONTO A CORRERE?" : "CORSA IN CORSO")
-                    .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.68))
                 Button {
                     if activeRun == nil {
                         session.beginRun(plan)
@@ -44,9 +43,9 @@ struct ClientRunningView: View {
                 .buttonStyle(ClayPrimaryButtonStyle())
                 .accessibilityHint("Apre il rilevamento GPS della corsa")
                 Label("Percorso e Live Activity restano visibili anche con schermo bloccato.", systemImage: "lock.iphone")
-                    .font(.caption).foregroundStyle(.white.opacity(0.66))
+                    .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
             }
-            .premiumCard(tint: ClientClay.accent, padding: 16)
+            .padding(.vertical, ClientSpacing.related)
 
             personalBestSection
 
@@ -84,30 +83,39 @@ struct ClientRunningView: View {
     private var personalBestSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             ClientSectionHeader(title: "Personal Best", detail: "Top 3 per distanza", symbol: "trophy.fill")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(ClientRunningTarget.allCases) { target in
+            if recordedTargets.isEmpty {
+                Label("I tuoi record appariranno dopo una corsa con distanza GPS sufficiente.", systemImage: "trophy")
+                    .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
+            }
+            LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(recordedTargets) { target in
                     let top = ClientRunningAchievements.leaderboard(results: results, target: target)
                     Button { selectedTarget = target } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text(target.title).font(.caption.weight(.bold)).tracking(0.8)
                                 Spacer()
-                                Image(systemName: top.isEmpty ? "circle.dashed" : "trophy.fill")
+                                Image(systemName: "trophy.fill")
                             }
-                            .foregroundStyle(top.isEmpty ? ClientClay.secondaryInk : ClientClay.gold)
+                            .foregroundStyle(ClientClay.color(.warning))
                             Text(top.first.map { ClientRunningFormat.effortDuration($0.effort.durationSeconds) } ?? "--:--")
                                 .font(.system(.title2, design: .rounded, weight: .heavy).monospacedDigit())
-                                .foregroundStyle(ClientClay.ink)
+                                .foregroundStyle(ClientClay.color(.textPrimary))
                             Text(top.first.map { $0.completedAt.formatted(date: .abbreviated, time: .omitted) } ?? "Nessun tempo")
-                                .font(.caption2).foregroundStyle(ClientClay.secondaryInk).lineLimit(1)
+                                .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
                         }
-                        .clayCard(padding: 13)
+                        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
                     }
                     .buttonStyle(.plain)
-                    .disabled(top.isEmpty)
-                    .accessibilityHint(top.isEmpty ? "Completa questa distanza per registrare un tempo" : "Apre la Top 3")
+                    .accessibilityHint("Apre la Top 3")
                 }
             }
+        }
+    }
+
+    private var recordedTargets: [ClientRunningTarget] {
+        ClientRunningTarget.allCases.filter {
+            !ClientRunningAchievements.leaderboard(results: results, target: $0).isEmpty
         }
     }
 
@@ -144,6 +152,7 @@ private struct ClientRunningExecutionView: View {
     @EnvironmentObject private var liveActivity: ClientRunLiveActivityManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var camera: MapCameraPosition = .automatic
     @State private var metricMode: RunningMetricMode = .speed
     @State private var completedResult: ClientRunningResult?
@@ -242,17 +251,19 @@ private struct ClientRunningExecutionView: View {
         case .failed:
             banner("Segnale GPS temporaneamente non disponibile.", symbol: "exclamationmark.triangle.fill")
         case .idle, .tracking:
-            EmptyView()
+            if location.route.count < 2 {
+                banner("In attesa del segnale GPS. Il tempo continua a essere registrato.", symbol: "location")
+            }
         }
     }
 
     private func banner(_ text: String, symbol: String) -> some View {
         Label(text, systemImage: symbol)
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(ClientClay.ink)
+            .foregroundStyle(ClientClay.color(.textPrimary))
             .padding(12)
-            .background(ClientClay.surfaceElevated.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
-            .overlay { RoundedRectangle(cornerRadius: 14).stroke(ClientClay.border) }
+            .background(ClientClay.color(.surfaceElevated), in: RoundedRectangle(cornerRadius: ClientRadius.control))
+            .overlay { RoundedRectangle(cornerRadius: ClientRadius.control).stroke(ClientClay.color(.borderStrong)) }
             .padding(.horizontal, 14)
             .padding(.top, 8)
     }
@@ -260,12 +271,18 @@ private struct ClientRunningExecutionView: View {
     private var controlDock: some View {
         VStack(spacing: 13) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: ClientSpacing.related))
+                    : AnyLayout(HStackLayout(spacing: ClientSpacing.related))
                 VStack(spacing: 10) {
-                    HStack(spacing: 10) {
+                    layout {
                         liveMetric(title: "Tempo", value: ClientRunningFormat.duration(activeRun?.elapsedSeconds(at: context.date) ?? 0), symbol: "timer", prominence: true)
-                        liveMetric(title: "Distanza", value: "\(location.distanceKm.formatted(.number.precision(.fractionLength(2)))) km", symbol: "point.topleft.down.to.point.bottomright.curvepath", prominence: true)
+                        if location.route.count > 1 {
+                            liveMetric(title: "Distanza", value: "\(location.distanceKm.formatted(.number.precision(.fractionLength(2)))) km", symbol: "point.topleft.down.to.point.bottomright.curvepath", prominence: true)
+                        }
                     }
-                    HStack(spacing: 10) {
+                    if location.route.count > 1 {
+                      layout {
                         if metricMode == .speed {
                             liveMetric(title: "Velocità attuale · 25s", value: currentSpeed, symbol: "speedometer")
                             liveMetric(title: "Velocità media", value: averageSpeed(at: context.date), symbol: "gauge.with.needle")
@@ -273,6 +290,7 @@ private struct ClientRunningExecutionView: View {
                             liveMetric(title: "Ritmo attuale · 25s", value: currentPace, symbol: "metronome")
                             liveMetric(title: "Ritmo medio", value: averagePace(at: context.date), symbol: "gauge.with.needle")
                         }
+                      }
                     }
                 }
             }
@@ -305,7 +323,7 @@ private struct ClientRunningExecutionView: View {
             }
         }
         .padding(16)
-        .background(ClientClay.canvas.opacity(0.97))
+        .background(ClientClay.color(.backgroundPrimary))
     }
 
     @ViewBuilder private var liveTrendChart: some View {
@@ -383,13 +401,13 @@ private struct ClientRunningExecutionView: View {
 
     private func liveMetric(title: String, value: String, symbol: String, prominence: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Label(title, systemImage: symbol).font(.caption).foregroundStyle(ClientClay.secondaryInk)
+            Label(title, systemImage: symbol).font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
             Text(value).font(.system(prominence ? .title2 : .headline, design: .rounded, weight: .bold).monospacedDigit())
-                .minimumScaleFactor(0.7).lineLimit(1).foregroundStyle(ClientClay.ink)
+                .fixedSize(horizontal: false, vertical: true).foregroundStyle(ClientClay.color(.textPrimary))
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 15))
-        .overlay { RoundedRectangle(cornerRadius: 15).stroke(ClientClay.border) }
+        .background(ClientClay.color(.surfaceElevated), in: RoundedRectangle(cornerRadius: ClientRadius.control))
+        .overlay { RoundedRectangle(cornerRadius: ClientRadius.control).stroke(ClientClay.color(.borderSubtle)) }
     }
 
     private func handleCompletedSplit(in route: [ClientRoutePoint]) {
@@ -435,12 +453,12 @@ private struct HoldToFinishButton: View {
 
     var body: some View {
         Label("Tieni premuto", systemImage: "stop.fill")
-            .font(.headline).foregroundStyle(.white)
+            .font(.headline).foregroundStyle(ClientClay.color(.textOnAccent))
             .frame(maxWidth: .infinity, minHeight: 50)
             .background(ClientClay.brandGradient, in: RoundedRectangle(cornerRadius: 16))
             .overlay(alignment: .bottomLeading) {
                 GeometryReader { proxy in
-                    Capsule().fill(.white.opacity(0.8))
+                    Capsule().fill(ClientClay.color(.textOnAccent))
                         .frame(width: isHolding ? proxy.size.width : 0, height: 4)
                         .animation(isHolding ? .linear(duration: 1.25) : .easeOut(duration: 0.15), value: isHolding)
                 }
@@ -464,7 +482,7 @@ private struct ClientRunSplitToast: View {
     var body: some View {
         HStack(spacing: 12) {
             Text("\(split.index)")
-                .font(.headline.monospacedDigit()).foregroundStyle(.white)
+                .font(.headline.monospacedDigit()).foregroundStyle(ClientClay.color(.backgroundPrimary))
                 .frame(width: 36, height: 36).background(ClientClay.runAccent, in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text("CHILOMETRO \(split.index) COMPLETATO").font(.caption.weight(.bold)).tracking(0.7)
@@ -478,7 +496,7 @@ private struct ClientRunSplitToast: View {
         .padding(12)
         .background(ClientClay.surfaceElevated.opacity(0.97), in: RoundedRectangle(cornerRadius: 17))
         .overlay { RoundedRectangle(cornerRadius: 17).stroke(ClientClay.runAccent.opacity(0.55)) }
-        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .shadow(color: ClientClay.shadow.opacity(0.20), radius: 18, y: 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Chilometro \(split.index) completato in \(ClientRunningFormat.effortDuration(split.durationSeconds))")
     }
@@ -489,6 +507,7 @@ private struct ClientRunningCompletionView: View {
     let onDone: () -> Void
     @EnvironmentObject private var session: ClientSessionStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var visiblePointCount = 1
     @State private var showingSummary = false
     @State private var camera: MapCameraPosition = .automatic
@@ -507,6 +526,7 @@ private struct ClientRunningCompletionView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                  if result.route.count > 1 {
                     Map(position: $camera) {
                         if visibleRoute.count > 1 {
                             MapPolyline(coordinates: visibleRoute.map(\.coordinate))
@@ -526,6 +546,11 @@ private struct ClientRunningCompletionView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 24))
                     .overlay { RoundedRectangle(cornerRadius: 24).stroke(ClientClay.border) }
                     .accessibilityLabel("Mappa del percorso completato")
+                  } else {
+                    Label("Percorso GPS non disponibile. Sono mostrati solo i dati registrati.", systemImage: "location.slash")
+                        .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                  }
 
                     if showingSummary {
                         summary
@@ -554,17 +579,23 @@ private struct ClientRunningCompletionView: View {
             Label("Salvata su questo dispositivo", systemImage: "checkmark.circle.fill")
                 .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.sage)
             if !recordAchievements.isEmpty { personalBestSummary }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                summaryMetric("Distanza", value: result.distanceKm.map { "\($0.formatted(.number.precision(.fractionLength(2)))) km" } ?? "Non disponibile")
+            LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                if let distance = result.distanceKm {
+                    summaryMetric("Distanza", value: "\(distance.formatted(.number.precision(.fractionLength(2)))) km")
+                }
                 summaryMetric("Durata", value: ClientRunningFormat.duration(result.durationSeconds))
-                summaryMetric("Ritmo medio", value: result.averagePaceMinutesPerKm.map(ClientRunningFormat.pace) ?? "Non disponibile")
-                summaryMetric("Velocità media", value: result.averageSpeedKmh.map { "\($0.formatted(.number.precision(.fractionLength(1)))) km/h" } ?? "Non disponibile")
-                summaryMetric("Velocità massima", value: result.maximumSpeedKmh.map { "\($0.formatted(.number.precision(.fractionLength(1)))) km/h" } ?? "Non disponibile")
+                if let pace = result.averagePaceMinutesPerKm { summaryMetric("Ritmo medio", value: ClientRunningFormat.pace(pace)) }
+                if let speed = result.averageSpeedKmh {
+                    summaryMetric("Velocità media", value: "\(speed.formatted(.number.precision(.fractionLength(1)))) km/h")
+                }
+                if let maximum = result.maximumSpeedKmh {
+                    summaryMetric("Velocità massima", value: "\(maximum.formatted(.number.precision(.fractionLength(1)))) km/h")
+                }
             }
             if !splits.isEmpty { splitSummary }
             Button("Fine", action: onDone).buttonStyle(ClayPrimaryButtonStyle())
         }
-        .clayCard()
+        .padding(.vertical, ClientSpacing.related)
     }
 
     private var personalBestSummary: some View {
@@ -625,12 +656,12 @@ private struct ClientRunningCompletionView: View {
 
     private func summaryMetric(_ title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            Text(value).font(.headline.monospacedDigit()).minimumScaleFactor(0.7).lineLimit(2)
+            Text(title).font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
+            Text(value).font(.headline.monospacedDigit()).foregroundStyle(ClientClay.color(.textPrimary))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12).frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-        .background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 14))
-        .overlay { RoundedRectangle(cornerRadius: 14).stroke(ClientClay.border) }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
     }
 
     private func replay() async {
@@ -670,9 +701,9 @@ private struct ClientPersonalBestDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(target.title).font(.caption.weight(.bold)).tracking(1).foregroundStyle(ClientClay.gold)
-                        Text("Migliori prestazioni").font(.system(.title, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                        Text("Migliori prestazioni").font(.system(.title, design: .rounded, weight: .heavy)).foregroundStyle(ClientClay.ink)
                         Text("Un solo miglior tratto per corsa, calcolato sui campioni GPS effettivi.")
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     }
                     .premiumCard(tint: ClientClay.gold)
 

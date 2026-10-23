@@ -1,0 +1,465 @@
+{
+  "date": "2026-10-23",
+  "files": [
+    {
+      "path": "GymManagerClient/App/ClientRootView.swift",
+      "sha256": "3ad1055c270269e869d9edddb59343937cc2b9bd725b7eff6bce45715a6db076"
+    },
+    {
+      "path": "GymManagerClient/App/ClientTabView.swift",
+      "sha256": "5b1ccf12684deb01054f3d57841cdade92cc3b109eeef3c3e5f0db613dd212eb"
+    },
+    {
+      "path": "GymManagerClient/App/GymManagerClientApp.swift",
+      "sha256": "36316e1a7babcdcc137a7cd40cca0b78e0a4581eec41c0a546e8a1fd7f593bee"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientActivityInsights.swift",
+      "sha256": "04479f994714cf3a77ac2dc0c2607c7d17cee30690c69f2613b8c4fd16aa9884"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientActivityModels.swift",
+      "sha256": "58053ff1f1601a4147b1eab3075a79a741cd14be28a3dfc5fee97114c7c0c282"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientActivityStore.swift",
+      "sha256": "27207f7e66fd308863cb4c8163ce3608914020657be8c3b76a7ba1a2bb2b6097"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientAppearance.swift",
+      "sha256": "40a88d42c1114456924221e1b1f98ce4d8d35723b38daf3960e78356bd897f1d"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientAvatarStore.swift",
+      "sha256": "aa26f982ba3faed4fc0f8999a6486d1bb44cfb7e6fc2a403002a55cf708e3e18"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientCatalogMuscleMapping.swift",
+      "sha256": "a90647c0a225dca07484f72038df65770e31ad824081e3f58fec19660c58e138"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientCircularProgress.swift",
+      "sha256": "88f3bdb6815fa0ff3de6d022e992a871d605fcf5c595366585f24881aabeea32"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientCompactSelector.swift",
+      "sha256": "675f373e3ea1f7e0a4611a162013f8f701a3d98e3b681901474f4242359b8e03"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientContentLoadState.swift",
+      "sha256": "55cd72fd4b506fbc59ed71076f406512f3dc00309b4080afe7bbac47c38dbaab"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientContentStatusView.swift",
+      "sha256": "a8dc131b0715a243492ea2754682ae776a9acdeb8ecca48a5d3e8c9fa3152f55"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientDesignSystem.swift",
+      "sha256": "88f2b9196a0d9b181a3515bcd3a7886f75ea4f69375efead39f82ca5c51ffec3"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientEditedNutritionPlanValidator.swift",
+      "sha256": "ca955c5f1e29b5cffd3af8d734a5bd75b09f0e6254886969cb6af9645a5dff1a"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientEditedWorkoutPlanValidator.swift",
+      "sha256": "51b9be72703494420f17098848f4ba2173ccc437fe4255c591d4ce580dd99ebf"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientExerciseDifficultyPolicy.swift",
+      "sha256": "9a51b5e8f060ce2c4c0f7442fb5e388e360f263695f9e9392297e4918ccdd33f"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientExerciseMediaPipeline.swift",
+      "sha256": "7b4a79f446a878fda72827310e1d936cd967cccdf4183a7c2a5c2de8019b66e0"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientExerciseVisualModels.swift",
+      "sha256": "abf7c4d85ba5f8f3cc3df6556daa35a872b142dceac4dc7b2a29097c175b3317"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientFloatingTimerPlacement.swift",
+      "sha256": "72d601a500225c46b53b31934b1eff2b64c0efc24114d3eaed419c6523fdc886"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientHaptics.swift",
+      "sha256": "6363685dc595bd1c24c8d70e02d8b5a6d673b3ef6623e468b205f4f80ea00834"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientManualWorkoutDraft.swift",
+      "sha256": "7de6a9b99099909d8f2ac557532e039a0fbcd3c1f4850b6b2803977073bb5bb5"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientModels.swift",
+      "sha256": "680797d519c9db238f4a49c2d37540e2a860059d8d904487923ce7c8fd67785d"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCoachContract.swift",
+      "sha256": "2da92c880a2c1dcd9950ba4e34f30b6c41858351f781e743b798aba7682df501"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCoachEditing.swift",
+      "sha256": "152eed11ecf0213e81a406d454412b818d22da768b798da4e0a22caf80490c4b"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCoachEnergy.swift",
+      "sha256": "12ff782a3bc194cc0f189082e6686f2511327112d241b78ea71495ca88529ff4"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCoachFlow.swift",
+      "sha256": "d01951358d3a870bfeb2b04ab4d3bf2b1792db81ba9bb6e157f6b9497d83d5a6"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCoachService.swift",
+      "sha256": "e82023738f0e806006898daaf7d844a699d05c0e0a1437a72186d673efc328f0"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCoachUISession.swift",
+      "sha256": "dd39763f5ee021a9cba2cdb612f93210b504ab8569297579863773999faff254"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionCreation.swift",
+      "sha256": "3142f2ddc1c869094a9ad58729d131bb6ec93653aeffb0366b4ee8f762944e66"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionEditingLayout.swift",
+      "sha256": "5982b47edf4157bcaee668b48039aec4d4daa11c28d50e87c9803e93f11196b3"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionFoodPolicy.swift",
+      "sha256": "5bba367617b47ce235cbe5ec2d313d3c636bf1e8ef28b2e698c2643966d0cf0d"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionGenerator.swift",
+      "sha256": "31ec6edf491d6bb81493f101873a6ec30302cf56e0ddaab94ba353a6834606c4"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionPlanValidator.swift",
+      "sha256": "cf4b1e6b42198838d64b10b3cac9adbbdd503e3cc576fdd4413e064235bb0932"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionPortionSolver.swift",
+      "sha256": "43563fa7b18c606ec2329ba3d897ad63dedae5b554b4477fbbee247edebb86ec"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientNutritionSmartReplacement.swift",
+      "sha256": "90042855ad6df6fde10434ae436cc8ba4dea851823e607193c244e7e46f850aa"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientPersonalContent.swift",
+      "sha256": "2e7ae7ffd1e2682ddd2582f25e4e2801d85f31d8aa05636ca56fc3e8aad336b5"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientPersonalRepository.swift",
+      "sha256": "d542e769cc2dbdd39dc6ec060c401bb311aee5bfb1b9c9c20635553ac088b628"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientPlanEditProvenance.swift",
+      "sha256": "c3fe9d9d314611a48e532b9d1d555db7c7e062aa3ab5e31ca1ddc83106e5e17a"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientRefreshErrorPolicy.swift",
+      "sha256": "2cb8fb477e961b04a00de6ed421f346d9bea2cc4c0dcdcffae77f83cf79f2ad4"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientRepository.swift",
+      "sha256": "8a5986cc5b353f3bab9088045f19171d5d01992c00dc87cd0ae8b51a0fe091cf"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientRestLiveActivityManager.swift",
+      "sha256": "454dd6091b2aadf307b71066966dd11b016d130f951d10411a8351adb054e991"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientRunLiveActivityManager.swift",
+      "sha256": "3db0f58c9297126b725c9a9a33e3ebe5730b79aa962009bd02582b53cd80cdda"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientSessionStore.swift",
+      "sha256": "9c5b5c67368e31eb5f33d04e9da846fe36a2fc6c619637db0303e8aef96299bb"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientSmartPlanEditingSession.swift",
+      "sha256": "7a44827bb9082049b2eedc0a5526123f25ad0f149c3c6260cc31f06b4f97fca2"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientSupabase.swift",
+      "sha256": "10348bfd6adab42462f25967f520a2e1669d5b18c988c9013ca3f4ba043b72a0"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientTabScrubState.swift",
+      "sha256": "1e9e3fd4e232cd48854fb992a4712f377cab3d3ea5cdd18911c991cf52d5bb22"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientTheme.swift",
+      "sha256": "924e9718f0c5df317f39f44586e9fc6d34b6d74822655abb24c19728b97b7b7d"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientUITokens.swift",
+      "sha256": "7f7296262175e7e65f05ebf7b72c299d339546388dea60e0284b18cf90af7546"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutCatalogPolicy.swift",
+      "sha256": "dce4a08cacdb9f8e6a75e522359e6a76a563f0cda3af6c85eb2c3023cef5ddde"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutCoachContract.swift",
+      "sha256": "22ef5d2282700dbe7662065e247c23e0908bcbcb3875e3de7c114368a4ada6ff"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutCoachFlow.swift",
+      "sha256": "402b445a6a134f281b8145814d85fab50eedb0404127f4dfa2c211c90ecbec55"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutCoachRules.swift",
+      "sha256": "da81d463603b87344198c3cbe409347e5ffb7c292a817a0b4eaeb7b1a75f79df"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutDoubleProgression.swift",
+      "sha256": "91f26f63761b5da46ab7edd7458d35e42b7e6807ff6f7494e5dc0c4e084df65e"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutGenerator.swift",
+      "sha256": "372c47c7bf42e0b7446752db5f1e5fa04bd5ae53c87cc3b3d3f2af48902fb7f1"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutPlanValidator.swift",
+      "sha256": "cd6e195e521aa8c50b434c73ebba20f29635c9c0411cab2c5aaed59e28550ee9"
+    },
+    {
+      "path": "GymManagerClient/Core/ClientWorkoutSmartReplacement.swift",
+      "sha256": "f9770118dcfaffa79f66eebc91ea461bc6bb94c4d86f4a61aa7a7f4cda673218"
+    },
+    {
+      "path": "GymManagerClient/Core/HealthKitStepService.swift",
+      "sha256": "da73c51452e8960f56c833b10264dcb74d86d5ca5958ef16431c67e33b28f91a"
+    },
+    {
+      "path": "GymManagerClient/Core/PersonalAgendaStore.swift",
+      "sha256": "76af7512f779781230e8784c26bacf2b592272fecf1be1efb59d5a71f5a1911d"
+    },
+    {
+      "path": "GymManagerClient/Core/RunningLocationService.swift",
+      "sha256": "953334a0ee4a6e359e6de01b265d6dafd235da21ede008e249a62d9fe38d93c5"
+    },
+    {
+      "path": "GymManagerClient/Demo/ClientDemoData.swift",
+      "sha256": "4cc9413d58befb74a39e6f57ee7e81745bef128c55f74486c54fc981297658bf"
+    },
+    {
+      "path": "GymManagerClient/Features/Home/ClientHomeView.swift",
+      "sha256": "ed974f7cd2eb6f66a93714504ab2ab885c995ab212e89637c5867c41eeaafec5"
+    },
+    {
+      "path": "GymManagerClient/Features/Nutrition/ClientNutritionCoachEditor.swift",
+      "sha256": "601df1cc1dff913389e237970bdbecda26be138a01a2c20275988361c1c2a081"
+    },
+    {
+      "path": "GymManagerClient/Features/Nutrition/ClientNutritionCoachWizard.swift",
+      "sha256": "226f0ab9ee490ea131b14b79c18a990b52ada40792dac7aad9ad423f4e214370"
+    },
+    {
+      "path": "GymManagerClient/Features/Nutrition/ClientNutritionCreationWizard.swift",
+      "sha256": "f4cb44978b3e66dc8930e369313170470ff0ed8f035cf93bb444f6ed419fa606"
+    },
+    {
+      "path": "GymManagerClient/Features/Nutrition/ClientNutritionReplacementSheet.swift",
+      "sha256": "d1d012474411382315baf0de37dafa0c468879aa04fcb4c6b6dd2cd7774a9e97"
+    },
+    {
+      "path": "GymManagerClient/Features/Nutrition/ClientNutritionView.swift",
+      "sha256": "9b34ee0b6f5fa2798b2c9c713005e306bacad443162803ec8957dffa533278e5"
+    },
+    {
+      "path": "GymManagerClient/Features/Nutrition/ClientPersonalNutritionView.swift",
+      "sha256": "07dfaa66fd8ce4ae6cc0c3b519fc375806eeee0a9abfc6bdd18ecdb2ec7695fd"
+    },
+    {
+      "path": "GymManagerClient/Features/Onboarding/ClientOnboardingView.swift",
+      "sha256": "f49fd7d53e6cdd21f65ee417e240c8b6cc674a4837211507ecf476e4f3853c3c"
+    },
+    {
+      "path": "GymManagerClient/Features/Progress/ClientProgressView.swift",
+      "sha256": "c008d211ec5581e59752875b3251de4604cd6613589d6ce42f442f06db70d5d1"
+    },
+    {
+      "path": "GymManagerClient/Features/Running/ClientRunningView.swift",
+      "sha256": "73f94d4c7c0e1817543794736211f4c78757af772719f8f73d606c57b7a29e7f"
+    },
+    {
+      "path": "GymManagerClient/Features/Space/ClientAccountView.swift",
+      "sha256": "6f970fc8edaae56c8d92ec0d39e49f4f14dbe5f4ecdda07e5e5d6dd39a8623c6"
+    },
+    {
+      "path": "GymManagerClient/Features/Space/ClientUpdatesView.swift",
+      "sha256": "1e65ce78309835bcb6fb16d13b9e008a1d17a95e5cf148bd9e9d21547890ce6c"
+    },
+    {
+      "path": "GymManagerClient/Features/Space/PersonalAgendaView.swift",
+      "sha256": "7a5fb226409135963ed3d487f036a31b8e7a4d02a23e1a9735cfaa9441b35a3a"
+    },
+    {
+      "path": "GymManagerClient/Features/Space/PersonalSpaceView.swift",
+      "sha256": "2b8d7d659fcfc957c1f435543d4908ca6d9663f09c192b10ccf601703ff8b134"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientActivityDashboardView.swift",
+      "sha256": "db9538d8b7a379e92352bf417abbf2f38245ed06e37fc9e4e17870a43fcf04dc"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientAnatomyMap.swift",
+      "sha256": "b15fd518da2218d5472480be3e728628ef8f38cef71fa0857effd7657864e390"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientExerciseDetailView.swift",
+      "sha256": "f927ddd528f18d9fae77694c95043033ecff858327db3f4501550c309a8c374c"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientExercisePrescriptionView.swift",
+      "sha256": "460970bcc348105fba0f13531234624c8c2f24aecd7db4ef680a16da0dc91fb5"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientExerciseVisualCard.swift",
+      "sha256": "a1c5adc881a4572184fcb0278461475f185762821f15b3c85f79810e66a4f279"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientFloatingRestTimer.swift",
+      "sha256": "1dcc7f9a98fdb9b7ced06ed3ff390ad2a00d2da9303820824aa0cf5f3853a56a"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientGuidedWorkoutView.swift",
+      "sha256": "4c374a9b61699f3d414e389b772a0bfc2ccfdd12b5bafe3698a347b1a1efb3df"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientManualWorkoutWizard.swift",
+      "sha256": "564e6d4c3511df4d1281b702ec89d01f940a31ab1a70ba755202f88cb3081061"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientPersonalWorkoutView.swift",
+      "sha256": "eb9d92fbdc689da9df663959c29c5d5f22aaa15c55748f71894f8559836f6554"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientRestTimerBridge.swift",
+      "sha256": "67f26ed821df23cf1b7bcec0b365ba7062dbe5049d21c27e5f041a762abdf0ee"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientWorkoutExecutionView.swift",
+      "sha256": "500c1de40d8a6cb14485ea7390574e7578c546d7d663ce1b13cb82a570f2f092"
+    },
+    {
+      "path": "GymManagerClient/Features/Workout/ClientWorkoutView.swift",
+      "sha256": "ecf2af2b8ff65fccf2c4e832ed096fcc0c713110b352e1ebb0620a7f3597b840"
+    },
+    {
+      "path": "GymManagerClient/Preview/ClientExerciseExperiencePreview.swift",
+      "sha256": "cc9f671757f7818b7a0425509c9d127233072a9525ae65f58a8982d1622f1e8f"
+    },
+    {
+      "path": "GymManagerClient/Preview/ClientFoundationPreview.swift",
+      "sha256": "e3a29b0feb1871c35ef77df6e7d6f738f5f896cfbfb56524fb5931398b492efb"
+    },
+    {
+      "path": "GymManagerClient/Preview/ClientNutritionCoachPreview.swift",
+      "sha256": "69c0a20bb43dc79d79c35fd79b2539feb870d712b976dbde8103e985cbbc45db"
+    },
+    {
+      "path": "GymManagerClient/Preview/ClientTrainingPreview.swift",
+      "sha256": "fed08d0f9558d76fcb0d7220f9f88971f486a61fca7c12b8abc71dd3ed927b36"
+    },
+    {
+      "path": "GymManagerClient/Preview/ClientWorkoutCoachPreview.swift",
+      "sha256": "6d6aac793842337b120a437a13d598afac5b10e972ddcfd0d60d407928935aae"
+    },
+    {
+      "path": "GymManagerClientTests/ClientCardLayoutTests.swift",
+      "sha256": "09264e67c9a7b2ab3dc8681cb50c930c5b447005415da91cc2741d78eb90d5db"
+    },
+    {
+      "path": "GymManagerClientTests/ClientContentLifecycleTests.swift",
+      "sha256": "1294de1f9a004594af6e08877cb81e67b0314073896426c6df9387021431b86a"
+    },
+    {
+      "path": "GymManagerClientTests/ClientExerciseExperienceTests.swift",
+      "sha256": "3c68633d00d4b4b33dbcce9cdff75a343ccbefb875b9c4d839742114a8961e02"
+    },
+    {
+      "path": "GymManagerClientTests/ClientExerciseIntelligenceTests.swift",
+      "sha256": "c3fde5166d225a88beff08e0353b252e43d8b25655975c3b5a960437f4ac88d2"
+    },
+    {
+      "path": "GymManagerClientTests/ClientFloatingTimerTests.swift",
+      "sha256": "9dc52671e7387573032162dc9efd9c65cd2fb769b6c528b0a75ef0e2939569f7"
+    },
+    {
+      "path": "GymManagerClientTests/ClientHomeReadinessTests.swift",
+      "sha256": "c8576b9eda9fb35b3c36a7ea1fe7b1695bf23abe2b42f98a385edf011d10cbc2"
+    },
+    {
+      "path": "GymManagerClientTests/ClientManualWorkoutTests.swift",
+      "sha256": "20c7e9c26ea54d5646d54c6a286102c21530f0c5684cb7f1648197cebd2688f8"
+    },
+    {
+      "path": "GymManagerClientTests/ClientNutritionCoachEngineTests.swift",
+      "sha256": "dfb607f6a5cf11fd1fce72caa3ae2a27d9a7f0ef977853d34140b0a826ca7548"
+    },
+    {
+      "path": "GymManagerClientTests/ClientNutritionCoachFixtures.swift",
+      "sha256": "2dbff94f6738174564d5a88e2628fb4f6524780c9b254de303f139a6fe9bcc45"
+    },
+    {
+      "path": "GymManagerClientTests/ClientNutritionCoachUITests.swift",
+      "sha256": "e7957a47ed119134b19708e8e83a745bbc22c11bbb00a6671f2a986d870ecea3"
+    },
+    {
+      "path": "GymManagerClientTests/ClientNutritionCreationTests.swift",
+      "sha256": "731f01d7a2bada6efd07ea95946fed35bcd77ef0c7a9c95d6b49f20b9a0507f4"
+    },
+    {
+      "path": "GymManagerClientTests/ClientNutritionSmartReplacementTests.swift",
+      "sha256": "afa9415d41bda24c8f5b96e2dcfd1f140566300659666fa36774a366ce55c945"
+    },
+    {
+      "path": "GymManagerClientTests/ClientPhase1Tests.swift",
+      "sha256": "e08158853ac85b3548d2cece2d1f525b149b376097214a71e9adf77b09d31e1a"
+    },
+    {
+      "path": "GymManagerClientTests/ClientRecoveryTimerTests.swift",
+      "sha256": "036422a595e3e02cade62a4ee8367f2603fb7e4f070a8f5239381339aac51c7a"
+    },
+    {
+      "path": "GymManagerClientTests/ClientRefreshTests.swift",
+      "sha256": "938e60b5fdd4a2870a46be9038edb7405c721ad6ae0cbacab59573b03a0f2f45"
+    },
+    {
+      "path": "GymManagerClientTests/ClientTabScrubTests.swift",
+      "sha256": "61335c78f677271dc07b31f322a6fc13632dbab62696f51740ee15a9e5e3f21d"
+    },
+    {
+      "path": "GymManagerClientTests/ClientThemeFoundationTests.swift",
+      "sha256": "2b195ed1c73f1b8aec6c3ca57b5841cbac22c56db50abb1fa865e95aef2e83aa"
+    },
+    {
+      "path": "GymManagerClientTests/ClientTrainingLayoutTests.swift",
+      "sha256": "407c46e3b248d99688782e8f648c49e6625dbfc1c8556e3800db299e19c432e4"
+    },
+    {
+      "path": "GymManagerClientTests/ClientWorkoutCoachEligibilityTests.swift",
+      "sha256": "d7c3921a816610cad6d554ef2f14be25ab83a8af715050ed91483294e9c04bd2"
+    },
+    {
+      "path": "GymManagerClientTests/ClientWorkoutCoachEngineTests.swift",
+      "sha256": "d9dfa742a1802254c545cd01678519d66bc19f9d62e768fb87b8424d3cd0db42"
+    },
+    {
+      "path": "GymManagerClientTests/ClientWorkoutCoachFixtures.swift",
+      "sha256": "e29d1ba3f24b0ab807765f1d12e995b4634e2caa1db36c4285691f2e1ee761b5"
+    },
+    {
+      "path": "GymManagerClientTests/ClientWorkoutCoachIntegrationTests.swift",
+      "sha256": "a1f5a3c3f03adfc85a1eee8eabe142223bf3bdb0511aa9e1a3dcee247579ed1c"
+    },
+    {
+      "path": "GymManagerClientTests/ClientWorkoutSmartReplacementTests.swift",
+      "sha256": "943c8d266c0f9c8a774a93ac4d48da1948229e0ba129463391341889554373e5"
+    }
+  ]
+}

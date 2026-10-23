@@ -121,7 +121,7 @@ enum ClientWorkoutSplitPreference: String, Codable, CaseIterable, Hashable, Send
 
     var displayName: String {
         switch self {
-        case .automatic: "Lascia decidere a Weol"
+        case .automatic: "Lascia decidere a GymManager"
         case .fullBody: "Full Body"
         case .upperLower: "Upper / Lower"
         case .pushPullLegs: "Push / Pull / Legs"
@@ -148,6 +148,11 @@ struct ClientWorkoutQuestionnaireAnswers: Codable, Equatable, Sendable {
     var avoidedExerciseNames: [String] = []
     var limitations: String = ""
     var durationWeeks: Int = 8
+    // Optional for historical JSON compatibility; new generation requires explicit answers.
+    var experienceEvidence: ClientWorkoutExperienceEvidence? = nil
+    var equipmentInventory: Set<ClientWorkoutEquipmentItem>? = nil
+    var avoidedExerciseIDs: Set<UUID>? = nil
+    var healthyAdultAcknowledged: Bool? = nil
 
     var isSafeForAutomaticGeneration: Bool {
         let text = limitations.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
@@ -171,9 +176,9 @@ struct ClientTrainingProfile: Codable, Equatable, Sendable {
     let durationWeeks: Int
 
     init(answers: ClientWorkoutQuestionnaireAnswers) {
-        experience = answers.experience
-        weeklyFrequency = min(6, max(2, answers.weeklyFrequency))
-        sessionDurationMinutes = [30, 45, 60, 75, 90].min(by: { abs($0 - answers.sessionDurationMinutes) < abs($1 - answers.sessionDurationMinutes) }) ?? 60
+        experience = answers.experienceEvidence?.classified(cappedAt: answers.experience) ?? .beginner
+        weeklyFrequency = answers.weeklyFrequency
+        sessionDurationMinutes = answers.sessionDurationMinutes
         equipment = answers.equipment
         splitPreference = answers.splitPreference
         customSplitGroups = answers.customSplitGroups
@@ -182,7 +187,7 @@ struct ClientTrainingProfile: Codable, Equatable, Sendable {
         nutritionPhase = answers.nutritionPhase
         avoidedExerciseNames = answers.avoidedExerciseNames
         limitations = answers.limitations
-        durationWeeks = [4, 6, 8, 12].min(by: { abs($0 - answers.durationWeeks) < abs($1 - answers.durationWeeks) }) ?? 8
+        durationWeeks = answers.durationWeeks
     }
 }
 
@@ -210,13 +215,14 @@ struct ClientWorkoutPlanValidation: Codable, Equatable, Sendable {
     let recoveryPlausible: Bool
     let hasDuplicateExercises: Bool
     let movementBalanceValid: Bool
-    let weeklySets: [ClientMuscleRegion: Int]
+    let weeklySets: [ClientMuscleRegion: Double]
     let notices: [String]
+    var contractValid: Bool? = nil
 
     var isValid: Bool {
         allMajorGroupsCovered && weeklyVolumeValid && sessionDurationPlausible && exercisesPerDayValid
             && equipmentCompatible && priorityMusclesRepresented && recoveryPlausible
-            && !hasDuplicateExercises && movementBalanceValid
+            && !hasDuplicateExercises && movementBalanceValid && contractValid != false
     }
 }
 
@@ -258,27 +264,28 @@ struct ClientExerciseMetadataNormalizer {
     }
 
     static func enrich(_ item: ClientExerciseCatalogItem) -> ClientExerciseCatalogItem {
+        let hasCatalogMuscles = item.catalogMuscles?.isEmpty == false
         guard let rule = rule(for: item.name) else {
             let legacy = legacyMuscles(item.muscleGroup)
             return item.enriched(
                 sourceKey: item.sourceKey ?? "catalog_\(slug(item.name))",
-                primaryMuscles: item.primaryMuscles.isEmpty ? legacy : item.primaryMuscles,
+                primaryMuscles: hasCatalogMuscles ? item.primaryMuscles : item.primaryMuscles.isEmpty ? legacy : item.primaryMuscles,
                 secondaryMuscles: item.secondaryMuscles,
                 movementPattern: item.movementPattern,
                 compatibleEquipment: item.compatibleEquipment.isEmpty ? Set(ClientTrainingEquipment.allCases) : item.compatibleEquipment,
                 kind: item.kind ?? .accessory,
-                minimumExperience: item.minimumExperience ?? .beginner,
+                minimumExperience: item.minimumExperience,
                 animationKey: item.animationKey
             )
         }
         return item.enriched(
             sourceKey: item.sourceKey ?? "catalog_\(slug(item.name))",
-            primaryMuscles: item.primaryMuscles.isEmpty ? rule.primary : item.primaryMuscles,
-            secondaryMuscles: item.secondaryMuscles.isEmpty ? rule.secondary : item.secondaryMuscles,
+            primaryMuscles: hasCatalogMuscles ? item.primaryMuscles : item.primaryMuscles.isEmpty ? rule.primary : item.primaryMuscles,
+            secondaryMuscles: hasCatalogMuscles ? item.secondaryMuscles : item.secondaryMuscles.isEmpty ? rule.secondary : item.secondaryMuscles,
             movementPattern: item.movementPattern ?? rule.pattern,
             compatibleEquipment: item.compatibleEquipment.isEmpty ? rule.equipment : item.compatibleEquipment,
             kind: item.kind ?? rule.kind,
-            minimumExperience: item.minimumExperience ?? rule.minimumExperience,
+            minimumExperience: item.minimumExperience ?? reviewedFallbackLevel(item.name, rule: rule),
             animationKey: item.animationKey ?? rule.animationKey
         )
     }
@@ -286,6 +293,16 @@ struct ClientExerciseMetadataNormalizer {
     static func rule(for name: String) -> Rule? {
         let normalized = normalize(name)
         return rules.first { rule in rule.aliases.contains { normalized.contains(normalize($0)) } }
+    }
+
+    private static func reviewedFallbackLevel(_ name: String, rule: Rule) -> ClientTrainingExperience {
+        // Compatibility for old payloads while the additive DB attribute awaits deployment.
+        // This is explicitly not persisted/claimed as a server classification.
+        let value = normalize(name)
+        if ["trazioni", "pull up"].contains(where: value.contains) { return .advanced }
+        if ["panca piana", "bench press", "panca inclinata", "squat", "affondi", "french press",
+            "shoulder press", "military press", "push up", "leg raise"].contains(where: value.contains) { return .intermediate }
+        return rule.minimumExperience
     }
 
     private static func legacyMuscles(_ value: String?) -> [ClientMuscleRegion] {
@@ -347,357 +364,212 @@ struct ClientExerciseMetadataNormalizer {
 }
 
 struct ClientWorkoutGenerator {
-    private struct SessionBlueprint: Sendable {
-        let name: String
-        let muscles: Set<ClientMuscleRegion>
-        let patterns: [ClientMovementPattern]
-        let weekday: Int
-    }
-
-    func generate(
-        answers: ClientWorkoutQuestionnaireAnswers,
-        catalog rawCatalog: [ClientExerciseCatalogItem],
-        variation: Int = 0,
-        now: Date = Date()
-    ) throws -> ClientGeneratedWorkoutResult {
+    /// Pure builder; actual account authorization is owned by the session/repository/RLS.
+    /// A new instance UUID/date is NOT part of the deterministic programming specification.
+    func generate(answers: ClientWorkoutQuestionnaireAnswers, catalog rawCatalog: [ClientExerciseCatalogItem],
+                  variation: Int = 0, now: Date = Date()) throws -> ClientGeneratedWorkoutResult {
         guard answers.isSafeForAutomaticGeneration else { throw ClientWorkoutGeneratorError.unsafeLimitations }
+        let eligibility = ClientWorkoutGenerationPolicy.validateAnswers(answers)
+        guard eligibility == .allowed else { throw eligibility }
+        guard !rawCatalog.isEmpty else { throw ClientWorkoutGeneratorError.emptyCatalog }
         let profile = ClientTrainingProfile(answers: answers)
-        let avoided = Set(profile.avoidedExerciseNames.map(ClientExerciseMetadataNormalizer.normalize))
-        let catalog = rawCatalog
-            .map(ClientExerciseMetadataNormalizer.enrich)
-            .filter { $0.compatibleEquipment.contains(profile.equipment) }
-            .filter { item in !avoided.contains(where: { ClientExerciseMetadataNormalizer.normalize(item.name).contains($0) }) }
-            .filter { experienceRank($0.minimumExperience ?? .beginner) <= experienceRank(profile.experience) }
-        guard !catalog.isEmpty else { throw ClientWorkoutGeneratorError.emptyCatalog }
-
-        let blueprints = split(profile: profile)
-        let count = exerciseCount(durationMinutes: profile.sessionDurationMinutes)
-        var weeklyUses: [UUID: Int] = [:]
-        var sessions: [ClientPersonalWorkoutSession] = []
-
-        for (index, blueprint) in blueprints.enumerated() {
-            let selected = selectExercises(
-                catalog: catalog,
-                blueprint: blueprint,
-                profile: profile,
-                targetCount: count,
-                variation: variation + index,
-                weeklyUses: weeklyUses
-            )
-            guard selected.count >= min(3, count) else { throw ClientWorkoutGeneratorError.insufficientCompatibleExercises }
-            for item in selected { weeklyUses[item.id, default: 0] += 1 }
-            let exercises = selected.enumerated().map { offset, item in
-                prescribe(item: item, position: offset, profile: profile)
+        let admission = try ClientWorkoutCatalogPolicy.admit(rawCatalog, answers: answers, level: profile.experience)
+        guard !admission.candidates.isEmpty else { throw ClientWorkoutGenerationEligibility.noCompatibleExercises }
+        let strategy = ClientWorkoutCoachRules.strategy(profile)
+        let blueprints = ClientWorkoutCoachRules.blueprints(profile, strategy: strategy)
+        let safeVariation = min(10_000, max(0, variation))
+        var lastIssues: [String] = []
+        // Bounded deterministic correction: fill coverage deficits, respect budget and rebalance volume.
+        // Never save/show a failed attempt; no unbounded regeneration or random shuffle.
+        for pass in 0..<3 {
+            var sessions: [ClientPersonalWorkoutSession] = []
+            for (dayIndex, blueprint) in blueprints.enumerated() {
+                let exercises = select(catalog: admission.candidates, blueprint: blueprint, profile: profile,
+                    prior: sessions.flatMap(\.exercises), variation: safeVariation, pass: pass, day: dayIndex)
+                guard exercises.count >= 3 else { throw ClientWorkoutGeneratorError.insufficientCompatibleExercises }
+                sessions.append(ClientPersonalWorkoutSession(id: UUID(), name: blueprint.name, weekday: blueprint.weekday,
+                    durationMinutes: ClientWorkoutCoachRules.minutes(exercises), exercises: exercises,
+                    targetMuscles: blueprint.muscles.sorted { $0.rawValue < $1.rawValue }))
             }
-            sessions.append(ClientPersonalWorkoutSession(
-                id: UUID(), name: blueprint.name, weekday: blueprint.weekday,
-                durationMinutes: profile.sessionDurationMinutes, exercises: exercises
-            ))
+            calibrate(&sessions, profile: profile)
+            var plan = ClientPersonalWorkoutPlan(id: UUID(), title: "\(title(strategy)) · \(profile.weeklyFrequency) giorni",
+                status: .active, sessions: sessions, createdAt: now, updatedAt: now, source: .guided,
+                durationWeeks: profile.durationWeeks, generationAnswers: answers,
+                progression: .doubleProgression(weeks: profile.durationWeeks), validation: nil)
+            plan.generationMetadata = ClientWorkoutGenerationMetadata(generatorVersion: ClientWorkoutCoachRules.version,
+                effectiveExperience: profile.experience, strategy: strategy,
+                rationale: explanation(profile, strategy: strategy, excluded: admission.excludedCount),
+                estimatedSessionMinutes: sessions.map { ClientWorkoutCoachRules.minutes($0.exercises) },
+                catalogFingerprint: ClientWorkoutPlanValidator.catalogFingerprint(admission.candidates))
+            let report = ClientWorkoutPlanValidator().inspect(plan: plan, answers: answers, catalog: rawCatalog)
+            if report.summary.isValid {
+                plan.validation = report.summary
+                plan = ClientPlanEditing.beginWorkout(plan)
+                return ClientGeneratedWorkoutResult(plan: plan, validation: report.summary)
+            }
+            lastIssues = report.summary.notices
         }
-
-        let preliminary = ClientPersonalWorkoutPlan(
-            id: UUID(), title: suggestedTitle(profile), status: .active, sessions: sessions,
-            createdAt: now, updatedAt: now, source: .guided, durationWeeks: profile.durationWeeks,
-            generationAnswers: answers, progression: .doubleProgression(weeks: profile.durationWeeks), validation: nil
-        )
-        let validation = validate(plan: preliminary, profile: profile)
-        guard validation.isValid else { throw ClientWorkoutGeneratorError.inconsistentPlan(validation.notices) }
-        var plan = preliminary
-        plan.validation = validation
-        return ClientGeneratedWorkoutResult(plan: plan, validation: validation)
+        throw ClientWorkoutGeneratorError.inconsistentPlan(lastIssues)
     }
 
+    func generate(context: ClientWorkoutGenerationContext, answers: ClientWorkoutQuestionnaireAnswers,
+                  catalog: [ClientExerciseCatalogItem], variation: Int = 0, now: Date = Date()) throws -> ClientGeneratedWorkoutResult {
+        let eligibility = ClientWorkoutGenerationPolicy.evaluate(context: context, answers: answers)
+        guard eligibility == .allowed else { throw eligibility }
+        return try generate(answers: answers, catalog: catalog, variation: variation, now: now)
+    }
+
+    /// Legacy analysis call remains for callers inspecting historical coefficients.
+    /// It CANNOT authorize a plan without the actual catalog/answers validation.
     func validate(plan: ClientPersonalWorkoutPlan, profile: ClientTrainingProfile) -> ClientWorkoutPlanValidation {
-        var weeklySets: [ClientMuscleRegion: Int] = [:]
-        var patterns: Set<ClientMovementPattern> = []
-        var notices: [String] = []
-        var equipmentCompatible = true
-        var duplicate = false
+        let volume = ClientWorkoutVolumeMetrics(exercises: plan.sessions.flatMap(\.exercises))
+        return ClientWorkoutPlanValidation(allMajorGroupsCovered: ClientMuscleRegion.majorGroups.isSubset(of: volume.coverage),
+            weeklyVolumeValid: false, sessionDurationPlausible: false, exercisesPerDayValid: false,
+            equipmentCompatible: false, priorityMusclesRepresented: false, recoveryPlausible: false,
+            hasDuplicateExercises: false, movementBalanceValid: false, weeklySets: volume.weeklySets,
+            notices: ["catalog-and-answers-required"], contractValid: false)
+    }
 
-        for session in plan.sessions {
-            var seen: Set<UUID> = []
-            for exercise in session.exercises {
-                if let catalogID = exercise.catalogExerciseID, !seen.insert(catalogID).inserted { duplicate = true }
-                if !(exercise.compatibleEquipment ?? []).contains(profile.equipment) { equipmentCompatible = false }
-                if let pattern = exercise.movementPattern { patterns.insert(pattern) }
-                for muscle in exercise.primaryMuscles ?? [] { weeklySets[muscle, default: 0] += exercise.sets }
-                for muscle in exercise.secondaryMuscles ?? [] { weeklySets[muscle, default: 0] += max(1, exercise.sets / 2) }
+    private func select(catalog: [ClientWorkoutCatalogPolicy.Candidate], blueprint: ClientWorkoutCoachRules.Blueprint,
+                        profile: ClientTrainingProfile, prior: [ClientPersonalExercise], variation: Int, pass: Int, day: Int) -> [ClientPersonalExercise] {
+        var selected: [ClientPersonalExercise] = []
+        var used: Set<UUID> = []
+        var counts: [ClientMovementPattern: Int] = [:]
+        let target = ClientWorkoutCoachRules.exerciseCount(profile)
+        for slot in 0..<target {
+            let desired = blueprint.patterns.indices.contains(slot) ? blueprint.patterns[slot] : nil
+            let volume = ClientWorkoutVolumeMetrics(exercises: prior + selected)
+            let eligible = catalog.filter {
+                !used.contains($0.item.id) && ($0.primary.isSubset(of: blueprint.muscles))
+                    && (counts[$0.review.pattern] ?? 0) < 2
             }
-        }
-
-        let availableCoverage = Set(plan.sessions.flatMap(\.exercises).flatMap { ($0.primaryMuscles ?? []) + ($0.secondaryMuscles ?? []) })
-        let allMajor = ClientMuscleRegion.majorGroups.isSubset(of: availableCoverage)
-        let minimumMainVolume = profile.experience == .beginner ? 3 : 6
-        let mainGroups: Set<ClientMuscleRegion> = [.chest, .lats, .quadriceps, .hamstrings, .glutes]
-        let volumeValid = weeklySets.allSatisfy { muscle, sets in
-            sets <= (profile.priorityMuscles.contains(muscle) ? 26 : 22)
-        }
-            && mainGroups.allSatisfy { (weeklySets[$0] ?? 0) >= minimumMainVolume }
-            && (weeklySets[.shoulders] ?? 0) >= 2
-        let exerciseCountsValid = plan.sessions.allSatisfy { (3...7).contains($0.exercises.count) }
-        let durationPlausible = plan.sessions.allSatisfy { session in
-            let estimated = session.exercises.reduce(0) { total, exercise in
-                total + exercise.sets * (45 + exercise.restSeconds)
-            } / 60
-            return estimated <= profile.sessionDurationMinutes + 18
-        }
-        let prioritiesRepresented = profile.priorityMuscles.allSatisfy { (weeklySets[$0] ?? 0) >= minimumMainVolume + 2 }
-        let movementBalance = patterns.contains(.horizontalPush)
-            && (patterns.contains(.horizontalPull) || patterns.contains(.verticalPull))
-            && patterns.contains(.kneeDominant)
-            && (patterns.contains(.hipHinge) || patterns.contains(.unilateralLower))
-        let recovery = recoveryIsPlausible(plan.sessions)
-
-        if !allMajor { notices.append("copertura muscolare incompleta") }
-        if !volumeValid { notices.append("volume settimanale fuori intervallo") }
-        if !durationPlausible { notices.append("durata stimata eccessiva") }
-        if !exerciseCountsValid { notices.append("numero esercizi per giornata non valido") }
-        if !equipmentCompatible { notices.append("attrezzatura non compatibile") }
-        if !prioritiesRepresented { notices.append("gruppi prioritari non rappresentati") }
-        if !recovery { notices.append("recupero tra sessioni insufficiente") }
-        if duplicate { notices.append("esercizi duplicati nella stessa giornata") }
-        if !movementBalance { notices.append("pattern di movimento sbilanciati") }
-
-        return ClientWorkoutPlanValidation(
-            allMajorGroupsCovered: allMajor, weeklyVolumeValid: volumeValid,
-            sessionDurationPlausible: durationPlausible, exercisesPerDayValid: exerciseCountsValid,
-            equipmentCompatible: equipmentCompatible, priorityMusclesRepresented: prioritiesRepresented,
-            recoveryPlausible: recovery, hasDuplicateExercises: duplicate,
-            movementBalanceValid: movementBalance, weeklySets: weeklySets, notices: notices
-        )
-    }
-
-    private func split(profile: ClientTrainingProfile) -> [SessionBlueprint] {
-        let weekdays = scheduledWeekdays(profile.weeklyFrequency)
-        if profile.splitPreference == .custom, !profile.customSplitGroups.isEmpty {
-            return (0..<profile.weeklyFrequency).map { index in
-                let muscles = Set(profile.customSplitGroups[index % profile.customSplitGroups.count])
-                return SessionBlueprint(
-                    name: muscles.map(\.displayName).joined(separator: " + "), muscles: muscles,
-                    patterns: patterns(for: muscles), weekday: weekdays[index]
-                )
+            let ranked = eligible.sorted { a, b in
+                func score(_ candidate: ClientWorkoutCatalogPolicy.Candidate) -> Double {
+                    let item = candidate.item
+                    var score = candidate.review.pattern == desired ? 1_000.0 : 0
+                    score += candidate.primary.sorted { $0.rawValue < $1.rawValue }.reduce(0) { $0 + max(0, ClientWorkoutCoachRules.target($1, profile) - (volume.weeklySets[$1] ?? 0)) * Double(12 + pass * 8) }
+                    score += Double(candidate.primary.intersection(profile.priorityMuscles).count) * 70
+                    score += Double(Set(item.secondaryMuscles).intersection(profile.priorityMuscles).count) * 8
+                    // Do not let a leg-curl/posterior accessory replace the required compound hinge.
+                    let fundamental: Set<ClientMovementPattern> = [.horizontalPush, .horizontalPull, .verticalPull, .kneeDominant, .hipHinge]
+                    score += candidate.review.kind == .compound ? (desired.map { fundamental.contains($0) } == true ? 180 : 15) : 0
+                    score += profile.experience == .beginner && candidate.level == .beginner ? 25 : 0
+                    score -= Double(prior.filter { $0.catalogExerciseID == item.id }.count) * 8
+                    // Small deterministic alternative preference ONLY within compatible, constrained candidates.
+                    let key = item.id.uuidString.utf8.reduce(0) { ($0 + Int($1)) % 997 }
+                    score += Double((key + variation * (key % 5 + 1) + day) % 11)
+                    return score
+                }
+                let sa = score(a), sb = score(b)
+                return sa == sb ? a.item.id.uuidString < b.item.id.uuidString : sa > sb
             }
-        }
-
-        let requested: ClientWorkoutSplitPreference = profile.splitPreference == .automatic
-            ? automaticSplit(for: profile.weeklyFrequency)
-            : profile.splitPreference
-        let templates: [(String, Set<ClientMuscleRegion>, [ClientMovementPattern])]
-        switch requested {
-        case .fullBody:
-            templates = (0..<profile.weeklyFrequency).map { index in fullBodyBlueprint(index: index) }
-        case .upperLower:
-            templates = (0..<profile.weeklyFrequency).map { index in index.isMultiple(of: 2) ? upperBlueprint(index: index) : lowerBlueprint(index: index) }
-        case .pushPullLegs:
-            let cycle = [pushBlueprint, pullBlueprint, legsBlueprint]
-            templates = (0..<profile.weeklyFrequency).map { cycle[$0 % cycle.count]($0) }
-        case .automatic, .custom:
-            templates = (0..<profile.weeklyFrequency).map { index in fullBodyBlueprint(index: index) }
-        }
-        return templates.enumerated().map { index, template in
-            SessionBlueprint(name: template.0, muscles: template.1, patterns: template.2, weekday: weekdays[index])
-        }
-    }
-
-    private func automaticSplit(for frequency: Int) -> ClientWorkoutSplitPreference {
-        switch frequency {
-        case 2: .fullBody
-        case 3: .fullBody
-        case 4: .upperLower
-        case 5, 6: .pushPullLegs
-        default: .fullBody
-        }
-    }
-
-    private func fullBodyBlueprint(index: Int) -> (String, Set<ClientMuscleRegion>, [ClientMovementPattern]) {
-        let patterns: [ClientMovementPattern] = index.isMultiple(of: 2)
-            ? [.kneeDominant, .horizontalPush, .verticalPull, .hipHinge, .verticalPush, .core]
-            : [.unilateralLower, .horizontalPull, .horizontalPush, .calves, .hipHinge, .verticalPull]
-        return ("Full Body \(Character(UnicodeScalar(65 + index)!))", ClientMuscleRegion.majorGroups, patterns)
-    }
-
-    private func upperBlueprint(index: Int) -> (String, Set<ClientMuscleRegion>, [ClientMovementPattern]) {
-        ("Upper \(index / 2 + 1)", [.chest, .shoulders, .upperBack, .lats, .biceps, .triceps, .core],
-         [.horizontalPush, .verticalPull, .verticalPush, .horizontalPull, .elbowFlexion, .elbowExtension])
-    }
-
-    private func lowerBlueprint(index: Int) -> (String, Set<ClientMuscleRegion>, [ClientMovementPattern]) {
-        ("Lower \(index / 2 + 1)", [.quadriceps, .hamstrings, .glutes, .calves, .core],
-         [.kneeDominant, .hipHinge, .unilateralLower, .calves, .core])
-    }
-
-    private func pushBlueprint(index: Int) -> (String, Set<ClientMuscleRegion>, [ClientMovementPattern]) {
-        ("Push \(index / 3 + 1)", [.chest, .shoulders, .triceps],
-         [.horizontalPush, .verticalPush, .horizontalPush, .elbowExtension])
-    }
-
-    private func pullBlueprint(index: Int) -> (String, Set<ClientMuscleRegion>, [ClientMovementPattern]) {
-        ("Pull \(index / 3 + 1)", [.lats, .upperBack, .biceps],
-         [.verticalPull, .horizontalPull, .verticalPull, .elbowFlexion])
-    }
-
-    private func legsBlueprint(index: Int) -> (String, Set<ClientMuscleRegion>, [ClientMovementPattern]) {
-        ("Legs \(index / 3 + 1)", [.quadriceps, .hamstrings, .glutes, .calves, .core],
-         [.kneeDominant, .hipHinge, .unilateralLower, .calves, .core])
-    }
-
-    private func patterns(for muscles: Set<ClientMuscleRegion>) -> [ClientMovementPattern] {
-        var result: [ClientMovementPattern] = []
-        if muscles.contains(.chest) { result.append(.horizontalPush) }
-        if muscles.contains(.lats) { result.append(.verticalPull) }
-        if muscles.contains(.upperBack) { result.append(.horizontalPull) }
-        if muscles.contains(.shoulders) { result.append(.verticalPush) }
-        if muscles.contains(.quadriceps) { result.append(.kneeDominant) }
-        if muscles.contains(.hamstrings) || muscles.contains(.glutes) { result.append(.hipHinge) }
-        if muscles.contains(.biceps) { result.append(.elbowFlexion) }
-        if muscles.contains(.triceps) { result.append(.elbowExtension) }
-        if muscles.contains(.calves) { result.append(.calves) }
-        if muscles.contains(.core) { result.append(.core) }
-        return result
-    }
-
-    private func selectExercises(
-        catalog: [ClientExerciseCatalogItem],
-        blueprint: SessionBlueprint,
-        profile: ClientTrainingProfile,
-        targetCount: Int,
-        variation: Int,
-        weeklyUses: [UUID: Int]
-    ) -> [ClientExerciseCatalogItem] {
-        var selected: [ClientExerciseCatalogItem] = []
-        for pattern in blueprint.patterns {
-            guard selected.count < targetCount else { break }
-            let candidates = catalog.filter { $0.movementPattern == pattern && !selected.map(\.id).contains($0.id) }
-            if let candidate = ranked(candidates, blueprint: blueprint, profile: profile, variation: variation, weeklyUses: weeklyUses).first {
-                selected.append(candidate)
+            var chosen: ClientPersonalExercise?
+            for candidate in ranked {
+                let exercise = prescribe(candidate, profile: profile)
+                if ClientWorkoutCoachRules.minutes(selected + [exercise]) <= profile.sessionDurationMinutes {
+                    chosen = exercise; used.insert(candidate.item.id); counts[candidate.review.pattern, default: 0] += 1
+                    break
+                }
             }
+            if let chosen { selected.append(chosen) }
         }
-        if selected.count < targetCount {
-            let remaining = catalog.filter { item in
-                !selected.map(\.id).contains(item.id)
-                    && !blueprint.muscles.isDisjoint(with: Set(item.primaryMuscles + item.secondaryMuscles))
-            }
-            selected.append(contentsOf: ranked(remaining, blueprint: blueprint, profile: profile, variation: variation, weeklyUses: weeklyUses).prefix(targetCount - selected.count))
-        }
-        return Array(selected.prefix(targetCount))
+        return selected.enumerated().sorted { a, b in
+            let ka = a.element.exerciseKind == .compound ? 0 : a.element.exerciseKind == .accessory ? 1 : 2
+            let kb = b.element.exerciseKind == .compound ? 0 : b.element.exerciseKind == .accessory ? 1 : 2
+            if ka != kb { return ka < kb }
+            let pa = !Set(a.element.primaryMuscles ?? []).isDisjoint(with: profile.priorityMuscles)
+            let pb = !Set(b.element.primaryMuscles ?? []).isDisjoint(with: profile.priorityMuscles)
+            return pa == pb ? a.offset < b.offset : pa
+        }.map(\.element)
     }
 
-    private func ranked(
-        _ candidates: [ClientExerciseCatalogItem],
-        blueprint: SessionBlueprint,
-        profile: ClientTrainingProfile,
-        variation: Int,
-        weeklyUses: [UUID: Int]
-    ) -> [ClientExerciseCatalogItem] {
-        candidates.sorted { lhs, rhs in
-            let left = score(lhs, blueprint: blueprint, profile: profile, variation: variation, weeklyUses: weeklyUses)
-            let right = score(rhs, blueprint: blueprint, profile: profile, variation: variation, weeklyUses: weeklyUses)
-            return left == right ? lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending : left > right
-        }
-    }
-
-    private func score(
-        _ item: ClientExerciseCatalogItem,
-        blueprint: SessionBlueprint,
-        profile: ClientTrainingProfile,
-        variation: Int,
-        weeklyUses: [UUID: Int]
-    ) -> Int {
-        let primary = Set(item.primaryMuscles)
-        let secondary = Set(item.secondaryMuscles)
-        var value = primary.intersection(blueprint.muscles).count * 20
-        value += secondary.intersection(blueprint.muscles).count * 6
-        value += primary.intersection(profile.priorityMuscles).count * 18
-        value += item.kind == .compound ? 8 : item.kind == .accessory ? 4 : 0
-        value -= weeklyUses[item.id, default: 0] * 5
-        let stable = item.name.unicodeScalars.reduce(0) { ($0 + Int($1.value)) % 17 }
-        value += (stable + variation * 5) % 7
-        return value
-    }
-
-    private func prescribe(item: ClientExerciseCatalogItem, position: Int, profile: ClientTrainingProfile) -> ClientPersonalExercise {
-        let isMain = position < 2 && item.kind == .compound
-        let repetitions: String
-        if profile.goal == .strengthAndMass && isMain { repetitions = "4–6" }
-        else if item.kind == .isolation { repetitions = "10–15" }
-        else if isMain { repetitions = profile.goal == .recomposition ? "6–10" : "6–10" }
-        else { repetitions = "8–12" }
-
-        var sets: Int
-        switch profile.experience {
-        case .beginner: sets = isMain ? 3 : 2
-        case .intermediate: sets = isMain ? 4 : 3
-        case .advanced:
-            sets = profile.sessionDurationMinutes >= 75 ? (isMain ? 3 : 2) : (isMain ? 4 : 3)
-        }
-        if !Set(item.primaryMuscles).isDisjoint(with: profile.priorityMuscles) { sets += 1 }
-        if profile.nutritionPhase == .cut && !isMain && sets > 2 { sets -= 1 }
-        sets = min(5, max(2, sets))
-
-        let rest = isMain ? (profile.goal == .strengthAndMass ? 180 : 150) : item.kind == .isolation ? 75 : 105
-        let effort = profile.experience == .beginner ? "RIR 3" : item.kind == .isolation ? "RIR 1–2" : "RIR 2"
-        let noteParts = [item.instructions, "Double progression: aumenta il carico solo al limite alto del range con il RIR previsto."]
-            .compactMap { $0 }.filter { !$0.isEmpty }
-        return ClientPersonalExercise(
-            id: UUID(), catalogExerciseID: item.id, catalogSourceKey: item.sourceKey,
-            name: item.name, muscleGroup: item.primaryMuscles.first?.displayName ?? item.muscleGroup ?? "",
+    private func prescribe(_ candidate: ClientWorkoutCatalogPolicy.Candidate, profile: ClientTrainingProfile) -> ClientPersonalExercise {
+        let item = candidate.item
+        let compound = candidate.review.kind == .compound
+        let repetitions = compound ? (profile.goal == .strengthAndMass ? "4–6" : "6–10")
+            : candidate.review.kind == .isolation ? "10–15" : "8–12"
+        var sets = profile.experience == .beginner ? 2 : 3
+        if !candidate.primary.isDisjoint(with: profile.priorityMuscles) { sets += 1 }
+        if profile.nutritionPhase == .cut { sets = max(2, sets - 1) }
+        let rest = compound ? (profile.goal == .strengthAndMass ? 180 : 150) : candidate.review.kind == .isolation ? 75 : 105
+        return ClientPersonalExercise(id: UUID(), catalogExerciseID: item.id, catalogSourceKey: item.sourceKey,
+            name: item.name, muscleGroup: item.primaryMuscles.first?.displayName ?? "",
             sets: sets, repetitions: repetitions, restSeconds: rest, loadKg: nil,
-            effortTarget: effort, notes: noteParts.joined(separator: " "), videoURL: item.videoURL,
-            primaryMuscles: item.primaryMuscles, secondaryMuscles: item.secondaryMuscles,
-            movementPattern: item.movementPattern, compatibleEquipment: item.compatibleEquipment,
-            exerciseKind: item.kind, animationKey: item.animationKey, technique: item.instructions
-        )
+            effortTarget: profile.experience == .beginner ? "RIR 3" : "RIR 2",
+            notes: "Double progression: raggiungi il limite alto in tutte le serie con il RIR previsto prima di valutare un aumento del carico.",
+            videoURL: item.videoURL, primaryMuscles: item.primaryMuscles, secondaryMuscles: item.secondaryMuscles,
+            movementPattern: candidate.review.pattern, compatibleEquipment: item.compatibleEquipment,
+            exerciseKind: candidate.review.kind, animationKey: item.animationKey, technique: item.instructions,
+            difficultyLevel: candidate.level, catalogMuscles: item.catalogMuscles)
     }
 
-    private func exerciseCount(durationMinutes: Int) -> Int {
-        switch durationMinutes {
-        case ...30: 4
-        case ...45: 5
-        case ...60: 5
-        case ...75: 6
-        default: 7
+    private func calibrate(_ sessions: inout [ClientPersonalWorkoutSession], profile: ClientTrainingProfile) {
+        // Reduce excess first. Each bounded pass changes at most one existing set.
+        for _ in 0..<160 {
+            let volume = ClientWorkoutVolumeMetrics(exercises: sessions.flatMap(\.exercises))
+            let excessive = Set(volume.weeklySets.filter { $0.value > ClientWorkoutCoachRules.maximum($0.key, profile) }.map(\.key))
+            guard !excessive.isEmpty else { break }
+            var changed = false
+            for d in sessions.indices.reversed() {
+                for e in sessions[d].exercises.indices.reversed() {
+                    let exercise = sessions[d].exercises[e]
+                    let involved = Set((exercise.primaryMuscles ?? []) + (exercise.secondaryMuscles ?? []))
+                    if exercise.sets > 1 && !involved.isDisjoint(with: excessive) {
+                        sessions[d].exercises[e].sets -= 1; changed = true; break
+                    }
+                }
+                if changed { break }
+            }
+            if !changed { break }
         }
+        // Fill attainable target deficits only while each session and weekly ceiling still fit.
+        for _ in 0..<160 {
+            let current = ClientWorkoutVolumeMetrics(exercises: sessions.flatMap(\.exercises))
+            var best: (Int, Int, Double)?
+            for d in sessions.indices {
+                for e in sessions[d].exercises.indices where sessions[d].exercises[e].sets < 5 {
+                    let exercise = sessions[d].exercises[e]
+                    let score = (exercise.primaryMuscles ?? []).reduce(0.0) { total, muscle in
+                        let deficit = max(0, ClientWorkoutCoachRules.target(muscle, profile) - (current.weeklySets[muscle] ?? 0))
+                        return total + deficit * (profile.priorityMuscles.contains(muscle) ? 3 : 1)
+                    }
+                    guard score > (best?.2 ?? 0) else { continue }
+                    var tentative = sessions
+                    tentative[d].exercises[e].sets += 1
+                    guard ClientWorkoutCoachRules.minutes(tentative[d].exercises) <= profile.sessionDurationMinutes else { continue }
+                    let metric = ClientWorkoutVolumeMetrics(exercises: tentative.flatMap(\.exercises))
+                    guard metric.weeklySets.allSatisfy({ $0.value <= ClientWorkoutCoachRules.maximum($0.key, profile) }) else { continue }
+                    best = (d, e, score)
+                }
+            }
+            guard let best else { break }
+            sessions[best.0].exercises[best.1].sets += 1
+        }
+        for index in sessions.indices { sessions[index].durationMinutes = ClientWorkoutCoachRules.minutes(sessions[index].exercises) }
     }
 
-    private func scheduledWeekdays(_ frequency: Int) -> [Int] {
-        switch frequency {
-        case 2: [1, 4]
-        case 3: [1, 3, 5]
-        case 4: [1, 2, 4, 5]
-        case 5: [1, 2, 3, 5, 6]
-        default: [1, 2, 3, 4, 5, 6]
+    private func title(_ strategy: ClientWorkoutStrategy) -> String {
+        switch strategy {
+        case .fullBody: "Full Body"
+        case .upperLower: "Upper / Lower"
+        case .pushPullLegs: "Push / Pull / Legs"
+        case .hybrid: "Programma ibrido"
+        case .custom: "Programma personale"
         }
     }
-
-    private func recoveryIsPlausible(_ sessions: [ClientPersonalWorkoutSession]) -> Bool {
-        let sorted = sessions.compactMap { session -> (Int, Set<ClientMuscleRegion>)? in
-            guard let weekday = session.weekday else { return nil }
-            let muscles = Set(session.exercises.flatMap { $0.primaryMuscles ?? [] })
-            return (weekday, muscles)
-        }.sorted { $0.0 < $1.0 }
-        for pair in zip(sorted, sorted.dropFirst()) where pair.1.0 - pair.0.0 <= 1 {
-            let overlap = pair.0.1.intersection(pair.1.1)
-            if overlap.count >= 4 { return false }
+    private func explanation(_ profile: ClientTrainingProfile, strategy: ClientWorkoutStrategy, excluded: Int) -> [String] {
+        var reasons = [
+            "\(title(strategy)): \(profile.weeklyFrequency) giorni da \(profile.sessionDurationMinutes) minuti, livello effettivo \(profile.experience.displayName.lowercased()).",
+            "Attrezzatura e varianti ammesse tramite revisione esplicita; \(excluded) record esclusi per vincoli o metadata non verificati.",
+            "Durata stimata: preparazione, lavoro, recuperi tra serie e transizioni; non è una misura registrata.",
+            "Volume iniziale adattato a esperienza e tempo: obiettivo orientativo, non prescrizione medica.",
+            "Contributi numerici solo dal catalogo; secondari privi di coefficiente sono esposizioni qualitative.",
+            "Progressione doppia per \(profile.durationWeeks) settimane: nessun carico inventato o aumento automatico."
+        ]
+        if !profile.priorityMuscles.isEmpty {
+            reasons.append("Priorità moderate: " + profile.priorityMuscles.map(\.displayName).sorted().joined(separator: ", ") + ".")
         }
-        return true
-    }
-
-    private func suggestedTitle(_ profile: ClientTrainingProfile) -> String {
-        let goal: String
-        switch profile.goal {
-        case .hypertrophy: goal = "Ipertrofia"
-        case .strengthAndMass: goal = "Forza e massa"
-        case .recomposition: goal = "Fitness"
-        case .maintenance: goal = "Mantenimento"
-        }
-        return "\(goal) · \(profile.weeklyFrequency) giorni"
-    }
-
-    private func experienceRank(_ value: ClientTrainingExperience) -> Int {
-        switch value {
-        case .beginner: 0
-        case .intermediate: 1
-        case .advanced: 2
-        }
+        if profile.nutritionPhase == .cut { reasons.append("Cut: base di volume prudente, stessi pattern e range coerenti; recuperi non accorciati automaticamente.") }
+        return reasons
     }
 }

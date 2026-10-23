@@ -24,6 +24,8 @@ struct ClientPersonalExercise: Identifiable, Codable, Equatable, Sendable {
     var exerciseKind: ClientExerciseKind? = nil
     var animationKey: String? = nil
     var technique: String? = nil
+    var difficultyLevel: ClientTrainingExperience? = nil
+    var catalogMuscles: [ClientCatalogMuscleContribution]? = nil
 
     func asClientExercise() -> ClientExercise {
         ClientExercise(
@@ -32,7 +34,8 @@ struct ClientPersonalExercise: Identifiable, Codable, Equatable, Sendable {
             notes: [effortTarget, notes].filter { !$0.isEmpty }.joined(separator: " · "), videoURL: videoURL,
             catalogExerciseID: catalogExerciseID, catalogSourceKey: catalogSourceKey,
             primaryMuscles: primaryMuscles, secondaryMuscles: secondaryMuscles,
-            movementPattern: movementPattern, animationKey: animationKey, technique: technique
+            movementPattern: movementPattern, animationKey: animationKey, technique: technique,
+            difficultyLevel: difficultyLevel, catalogMuscles: catalogMuscles
         )
     }
 }
@@ -43,6 +46,7 @@ struct ClientPersonalWorkoutSession: Identifiable, Codable, Equatable, Sendable 
     var weekday: Int?
     var durationMinutes: Int? = nil
     var exercises: [ClientPersonalExercise]
+    var targetMuscles: [ClientMuscleRegion]? = nil
 }
 
 struct ClientPersonalWorkoutPlan: Identifiable, Codable, Equatable, Sendable {
@@ -57,6 +61,8 @@ struct ClientPersonalWorkoutPlan: Identifiable, Codable, Equatable, Sendable {
     var generationAnswers: ClientWorkoutQuestionnaireAnswers? = nil
     var progression: ClientWorkoutProgressionRule? = nil
     var validation: ClientWorkoutPlanValidation? = nil
+    var generationMetadata: ClientWorkoutGenerationMetadata? = nil
+    var editProvenance: ClientPlanEditProvenance? = nil
 
     func asClientPlan(today: Date = Date()) -> ClientWorkoutPlan {
         let weekday = ClientDateLogic.weekday(for: today)
@@ -83,6 +89,13 @@ struct ClientPersonalFood: Identifiable, Codable, Equatable, Sendable {
     var proteinPer100g: Double?
     var carbsPer100g: Double?
     var fatPer100g: Double?
+    var gramsPerPiece: Double? = nil
+    var nutritionEvidence: ClientNutritionFoodEvidence? = nil
+
+    var quantityDescription: String {
+        if let gramsPerPiece, gramsPerPiece > 0 { return "\((quantityGrams / gramsPerPiece).formatted()) pz" }
+        return "\(quantityGrams.formatted()) g"
+    }
 
     var calories: Double { max(0, quantityGrams) * max(0, caloriesPer100g) / 100 }
     var protein: Double { max(0, quantityGrams) * max(0, proteinPer100g ?? 0) / 100 }
@@ -90,7 +103,8 @@ struct ClientPersonalFood: Identifiable, Codable, Equatable, Sendable {
     var fat: Double { max(0, quantityGrams) * max(0, fatPer100g ?? 0) / 100 }
 
     func asClientFood() -> ClientFood {
-        ClientFood(id: id, name: name, quantity: quantityGrams, unit: "g", caloriesKcal: calories)
+        let pieceWeight = gramsPerPiece.flatMap { $0 > 0 ? $0 : nil }
+        return ClientFood(id: id, name: name, quantity: pieceWeight.map { quantityGrams / $0 } ?? quantityGrams, unit: pieceWeight == nil ? "g" : "pz", caloriesKcal: calories)
     }
 }
 
@@ -118,6 +132,11 @@ struct ClientPersonalNutritionPlan: Identifiable, Codable, Equatable, Sendable {
     var days: [ClientPersonalNutritionDay]
     var createdAt: Date
     var updatedAt: Date
+    var source: ClientPersonalNutritionSource? = nil
+    var creationAnswers: ClientNutritionCreationAnswers? = nil
+    var target: ClientNutritionTarget? = nil
+    var generationMetadata: ClientNutritionGenerationMetadata? = nil
+    var editProvenance: ClientPlanEditProvenance? = nil
 
     func asClientPlan() -> ClientNutritionPlan {
         ClientNutritionPlan(
@@ -156,6 +175,10 @@ struct ClientExerciseCatalogItem: Identifiable, Codable, Equatable, Sendable {
     let kind: ClientExerciseKind?
     let minimumExperience: ClientTrainingExperience?
     let animationKey: String?
+    let difficultyLevel: ClientTrainingExperience?
+    let catalogMuscles: [ClientCatalogMuscleContribution]?
+
+    var effectiveDifficulty: ClientTrainingExperience? { difficultyLevel ?? minimumExperience }
 
     init(
         id: UUID,
@@ -170,7 +193,9 @@ struct ClientExerciseCatalogItem: Identifiable, Codable, Equatable, Sendable {
         compatibleEquipment: Set<ClientTrainingEquipment> = [],
         kind: ClientExerciseKind? = nil,
         minimumExperience: ClientTrainingExperience? = nil,
-        animationKey: String? = nil
+        animationKey: String? = nil,
+        difficultyLevel: ClientTrainingExperience? = nil,
+        catalogMuscles: [ClientCatalogMuscleContribution]? = nil
     ) {
         self.id = id
         self.name = name
@@ -185,6 +210,8 @@ struct ClientExerciseCatalogItem: Identifiable, Codable, Equatable, Sendable {
         self.kind = kind
         self.minimumExperience = minimumExperience
         self.animationKey = animationKey
+        self.difficultyLevel = difficultyLevel
+        self.catalogMuscles = catalogMuscles
     }
 
     func enriched(
@@ -202,7 +229,8 @@ struct ClientExerciseCatalogItem: Identifiable, Codable, Equatable, Sendable {
             instructions: instructions, sourceKey: sourceKey,
             primaryMuscles: primaryMuscles, secondaryMuscles: secondaryMuscles,
             movementPattern: movementPattern, compatibleEquipment: compatibleEquipment,
-            kind: kind, minimumExperience: minimumExperience, animationKey: animationKey
+            kind: kind, minimumExperience: minimumExperience, animationKey: animationKey,
+            difficultyLevel: difficultyLevel, catalogMuscles: catalogMuscles
         )
     }
 }
@@ -214,6 +242,10 @@ struct ClientFoodCatalogItem: Identifiable, Codable, Equatable, Sendable {
     let proteinPer100g: Double?
     let carbsPer100g: Double?
     let fatPer100g: Double?
+    var category: String? = nil
+    var provider: String? = nil
+    var gramsPerPiece: Double? = nil
+    var nutritionEvidence: ClientNutritionFoodEvidence? = nil
 }
 
 struct ClientPersonalContentState: Codable, Equatable, Sendable {

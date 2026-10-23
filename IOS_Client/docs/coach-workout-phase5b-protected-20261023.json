@@ -1,0 +1,33 @@
+{
+  "phase": "5B engine only",
+  "date": "2026-10-23",
+  "provenance": "Phase5A checkpoint files left unchanged during Phase5B; original normalizer equality independently compared to saved pre-engine source.",
+  "files": [
+    {
+      "path": "Core/ClientWorkoutCoachContract.swift",
+      "sha256": "22EF5D2282700DBE7662065E247C23E0908BCBCB3875E3DE7C114368A4ADA6FF"
+    },
+    {
+      "path": "Core/ClientSessionStore.swift",
+      "sha256": "CE38EB1B36D7E131BE429543A4C9EA8BF84F387912719046FE98FEF191B9D9B2"
+    },
+    {
+      "path": "Core/ClientPersonalRepository.swift",
+      "sha256": "A71555B7F87A876E0CD3E91A1263E0076BEFAE9CA9FF4610295FBEF9722E84DB"
+    },
+    {
+      "path": "Core/ClientPersonalContent.swift",
+      "sha256": "9D7AADC81234B8527285EA1687AE535A14FFA115A3A11EBC64E27A45687C8D5D"
+    },
+    {
+      "path": "Features/Workout/ClientGuidedWorkoutView.swift",
+      "sha256": "AA96EB7071662DBD92C0A0A858CBCFDB62459891211D35FC7D081480BA92F8E7"
+    }
+  ],
+  "normalizer": {
+    "path": "Core/ClientWorkoutGenerator.swift",
+    "start": "struct ClientExerciseMetadataNormalizer",
+    "end": "struct ClientWorkoutGenerator",
+    "sha256": "52C1B1BC092A3E2EF79E71032F42ECE80649781DA3AE6D9F21726FDBDB351762"
+  }
+}

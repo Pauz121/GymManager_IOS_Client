@@ -78,6 +78,8 @@ struct ClientRestTimerState: Codable, Equatable, Sendable {
     var phase: ClientRestTimerPhase
     var endsAt: Date?
     var pausedSeconds: TimeInterval?
+    var startedAt: Date? = nil
+    var durationSeconds: TimeInterval? = nil
 
     func remainingSeconds(at date: Date = Date()) -> Int {
         switch phase {
@@ -86,6 +88,28 @@ struct ClientRestTimerState: Codable, Equatable, Sendable {
         case .paused:
             return max(0, Int(ceil(pausedSeconds ?? 0)))
         }
+    }
+
+    func remainingFraction(at date: Date = Date()) -> Double? {
+        guard let durationSeconds, durationSeconds.isFinite, durationSeconds > 0 else { return nil }
+        return min(1, max(0, Double(remainingSeconds(at: date)) / durationSeconds))
+    }
+
+    mutating func pause(at date: Date) {
+        guard phase == .running else { return }
+        pausedSeconds = TimeInterval(remainingSeconds(at: date)); endsAt = nil; phase = .paused
+    }
+
+    mutating func resume(at date: Date) {
+        guard phase == .paused else { return }
+        endsAt = date.addingTimeInterval(pausedSeconds ?? 0); pausedSeconds = nil; phase = .running
+    }
+
+    mutating func adjust(by seconds: Int, at date: Date) {
+        let remaining = TimeInterval(max(0, remainingSeconds(at: date) + seconds))
+        if phase == .running { endsAt = date.addingTimeInterval(remaining) }
+        else { pausedSeconds = remaining }
+        if let durationSeconds { self.durationSeconds = max(remaining, durationSeconds + Double(seconds)) }
     }
 }
 

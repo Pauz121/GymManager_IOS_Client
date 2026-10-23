@@ -3,7 +3,8 @@ import SwiftUI
 struct ClientPersonalNutritionLibraryView: View {
     let allowsEditing: Bool
     @EnvironmentObject private var session: ClientSessionStore
-    @State private var editorPlan: ClientPersonalNutritionPlan?
+    @State private var modal: ClientNutritionCreationModal?
+    @State private var pendingModal: ClientNutritionCreationModal?
     @State private var selectedWeekday = ClientDateLogic.weekday(for: Date())
 
     var body: some View {
@@ -28,7 +29,7 @@ struct ClientPersonalNutritionLibraryView: View {
                     if let day = plan.days.first(where: { $0.weekday == selectedWeekday }) ?? plan.days.first {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(day.name).font(.title2.weight(.bold)).foregroundStyle(ClientClay.ink)
-                            Text("\(Int(day.meals.reduce(0) { $0 + $1.calories }.rounded())) kcal · \(day.meals.count) pasti")
+                            Text("\(Int(day.meals.reduce(0) { $0 + $1.calories }.rounded())) kcal · P \(Int(day.meals.reduce(0) { $0 + $1.protein }.rounded())) g · C \(Int(day.meals.reduce(0) { $0 + $1.carbs }.rounded())) g · G \(Int(day.meals.reduce(0) { $0 + $1.fat }.rounded())) g")
                                 .font(.caption).foregroundStyle(ClientClay.secondaryInk)
                         }
                         ForEach(day.meals) { meal in personalMealCard(meal, plan: plan) }
@@ -37,7 +38,7 @@ struct ClientPersonalNutritionLibraryView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Nessun piano personale", systemImage: "leaf.circle").font(.headline).foregroundStyle(ClientClay.ink)
                         Text("Crea i tuoi giorni, pasti e alimenti usando il database nutrizionale reale.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                        Button { editorPlan = Self.newPlan() } label: { Label("Crea piano", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
+                        Button { modal = .creation } label: { Label("Crea piano", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
                             .buttonStyle(ClayPrimaryButtonStyle())
                     }
                     .clayCard()
@@ -53,9 +54,30 @@ struct ClientPersonalNutritionLibraryView: View {
                 }
             }
         }
-        .sheet(item: $editorPlan) { plan in
-            ClientPersonalNutritionPlanEditor(plan: plan) { updated in session.savePersonalNutritionPlan(updated); editorPlan = nil }
+        .sheet(item: $modal, onDismiss: presentPendingModal) { destination in
+            switch destination {
+            case .creation:
+                ClientNutritionCreationChoiceView { choice in
+                    pendingModal = choice == .guided ? .guided : .manual
+                    modal = nil
+                }
+            case .manual:
+                ClientNutritionCreationWizard(mode: .manual, onSaved: { modal = nil })
+            case .guided:
+                ClientNutritionCreationWizard(mode: .guided, onSaved: { modal = nil })
+            case .editor(let plan):
+                ClientNutritionCreationWizard(mode: plan.source ?? .manual, plan: plan, onSaved: { modal = nil })
+            }
         }
+        .onDisappear { pendingModal = nil }
+    }
+
+    private func presentPendingModal() {
+        let destination = pendingModal
+        pendingModal = nil
+        guard allowsEditing, case .active(let identity, _, _) = session.state,
+              ClientAccessPolicy.canManagePersonalNutritionPlans(in: identity.mode) else { return }
+        modal = destination
     }
 
     private func historicalPlanCard(_ plan: ClientPersonalNutritionPlan) -> some View {
@@ -95,7 +117,8 @@ struct ClientPersonalNutritionLibraryView: View {
             }
             Spacer()
             Menu {
-                Button("Modifica", systemImage: "pencil") { editorPlan = plan }
+                Button("Modifica", systemImage: "pencil") { modal = .editor(plan) }
+                Button("Crea un nuovo piano", systemImage: "plus") { modal = .creation }
                 Button("Duplica", systemImage: "plus.square.on.square") {
                     var copy = plan; copy.id = UUID(); copy.title += " · Copia"; copy.status = .draft; copy.updatedAt = Date(); session.savePersonalNutritionPlan(copy)
                 }
@@ -115,12 +138,15 @@ struct ClientPersonalNutritionLibraryView: View {
                             Text(String(day.name.prefix(3)).uppercased()).font(.caption2.weight(.bold))
                             Text("\(day.meals.count)").font(.headline.monospacedDigit())
                         }
-                        .foregroundStyle(selectedWeekday == day.weekday ? .white : ClientClay.ink)
-                        .frame(width: 66, height: 58)
-                        .background(selectedWeekday == day.weekday ? ClientClay.brandGradient : LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 16))
-                        .overlay { RoundedRectangle(cornerRadius: 16).stroke(day.weekday == ClientDateLogic.weekday(for: Date()) ? ClientClay.sage : ClientClay.border, lineWidth: 2) }
+                        .foregroundStyle(ClientClay.ink)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .frame(minWidth: 66, minHeight: 58)
+                        .background(selectedWeekday == day.weekday ? ClientClay.surfaceElevated : ClientClay.surface, in: RoundedRectangle(cornerRadius: 16))
+                        .overlay { RoundedRectangle(cornerRadius: 16).stroke(day.weekday == ClientDateLogic.weekday(for: Date()) ? ClientClay.sage : selectedWeekday == day.weekday ? ClientClay.accent : ClientClay.border, lineWidth: selectedWeekday == day.weekday ? 3 : 1) }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("\(day.name), \(day.meals.count) pasti")
+                    .accessibilityAddTraits(selectedWeekday == day.weekday ? [.isSelected] : [])
                 }
             }
         }
@@ -132,11 +158,12 @@ struct ClientPersonalNutritionLibraryView: View {
             Text("P \(Int(meal.protein.rounded())) g · C \(Int(meal.carbs.rounded())) g · G \(Int(meal.fat.rounded())) g")
                 .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
             ForEach(meal.foods) { food in
-                HStack { Text(food.name).foregroundStyle(ClientClay.ink); Spacer(); Text("\(food.quantityGrams.formatted()) g · \(Int(food.calories.rounded())) kcal").font(.caption).foregroundStyle(ClientClay.secondaryInk) }
+                HStack { Text(food.name).foregroundStyle(ClientClay.ink); Spacer(); Text("\(food.quantityDescription) · \(Int(food.calories.rounded())) kcal").font(.caption).foregroundStyle(ClientClay.secondaryInk) }
             }
             if meal.foods.isEmpty { Text("Nessun alimento").font(.caption).foregroundStyle(ClientClay.secondaryInk) }
         }
-        .clayCard(padding: 14)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     static func newPlan() -> ClientPersonalNutritionPlan {
@@ -146,6 +173,19 @@ struct ClientPersonalNutritionLibraryView: View {
             days: names.enumerated().map { index, name in ClientPersonalNutritionDay(id: UUID(), weekday: index + 1, name: name, meals: []) },
             createdAt: now, updatedAt: now
         )
+    }
+}
+
+private enum ClientNutritionCreationModal: Identifiable {
+    case creation, manual, guided
+    case editor(ClientPersonalNutritionPlan)
+    var id: String {
+        switch self {
+        case .creation: "creation"
+        case .manual: "manual"
+        case .guided: "guided"
+        case .editor(let plan): "editor-\(plan.id.uuidString)"
+        }
     }
 }
 
@@ -220,7 +260,14 @@ private struct ClientPersonalMealEditor: View {
                 ForEach($meal.foods) { $food in
                     VStack(alignment: .leading) {
                         Text(food.name).font(.headline)
-                        HStack { TextField("Grammi", value: $food.quantityGrams, format: .number).keyboardType(.decimalPad); Text("g · \(Int(food.calories.rounded())) kcal").foregroundStyle(.secondary) }
+                        if let pieceWeight = food.gramsPerPiece, pieceWeight > 0 {
+                            Stepper("\(food.quantityDescription)", value: Binding(
+                                get: { max(1, Int((food.quantityGrams / pieceWeight).rounded())) },
+                                set: { food.quantityGrams = Double($0) * pieceWeight }
+                            ), in: 1...20)
+                        } else {
+                            HStack { TextField("Grammi", value: $food.quantityGrams, format: .number).keyboardType(.decimalPad); Text("g · \(Int(food.calories.rounded())) kcal").foregroundStyle(.secondary) }
+                        }
                     }
                 }
                 .onDelete { meal.foods.remove(atOffsets: $0) }
@@ -260,37 +307,76 @@ private struct ClientPersonalMealEditor: View {
     }
 }
 
-private struct ClientFoodPickerSheet: View {
+struct ClientFoodPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var session: ClientSessionStore
     @State private var query = ""
-    @State private var results: [ClientFoodCatalogItem] = []
+    @State private var catalog: [ClientFoodCatalogItem] = []
+    @State private var loading = true
     @State private var selected: ClientFoodCatalogItem?
     @State private var grams = 100.0
+    var allowedFoodIDs: Set<UUID>? = nil
+    var coachPortions: Bool = false
+    var onChooseCandidate: ((UUID) -> Void)? = nil
     let onSelect: (ClientPersonalFood) -> Void
+    private var results: [ClientFoodCatalogItem] {
+        catalog.filter { food in
+            (allowedFoodIDs?.contains(food.id) ?? true) && (query.isEmpty || food.name.localizedStandardContains(query))
+        }
+    }
 
     var body: some View {
         NavigationStack {
             List {
+                if loading { ProgressView("Caricamento catalogo…") }
+                else if catalog.isEmpty {
+                    Text("Catalogo temporaneamente non disponibile.")
+                    Button("Riprova") { Task { await load(force: true) } }
+                } else if results.isEmpty { Text("Nessun alimento trovato.").foregroundStyle(.secondary) }
                 ForEach(results) { food in
-                    Button { selected = food; grams = 100 } label: {
+                    Button {
+                        selected = food
+                        if coachPortions, let bounds = food.nutritionEvidence?.portion {
+                            grams = food.gramsPerPiece.map { bounds.minimumGrams / $0 } ?? bounds.minimumGrams
+                        } else { grams = food.gramsPerPiece == nil ? 100 : 1 }
+                    } label: {
                         HStack { VStack(alignment: .leading) { Text(food.name); Text("\(Int(food.caloriesPer100g.rounded())) kcal / 100 g").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: selected?.id == food.id ? "checkmark.circle.fill" : "circle") }
                     }
                 }
                 if let selected {
                     Section("Quantità") {
-                        TextField("Grammi", value: $grams, format: .number).keyboardType(.decimalPad)
-                        Text("\(Int((selected.caloriesPer100g * grams / 100).rounded())) kcal").font(.headline)
+                        if let onChooseCandidate {
+                            Text("La quantità verrà calcolata dal programma prima di confermare la sostituzione.")
+                            Button("Calcola quantità e impatto") { onChooseCandidate(selected.id) }.frame(minHeight: 44)
+                        } else {
+                        if coachPortions, let bounds = selected.nutritionEvidence?.portion {
+                            let divisor = selected.gramsPerPiece ?? 1
+                            Stepper("\((grams * divisor).formatted()) g", value: $grams,
+                                in: (bounds.minimumGrams / divisor)...(bounds.maximumGrams / divisor), step: bounds.stepGrams / divisor)
+                        } else if selected.gramsPerPiece != nil {
+                            Stepper("\(Int(grams)) pezzi", value: $grams, in: 1...20, step: 1)
+                        } else {
+                            TextField("Grammi", value: $grams, format: .number).keyboardType(.decimalPad)
+                        }
+                        Text("\(Int((selected.caloriesPer100g * grams * (selected.gramsPerPiece ?? 1) / 100).rounded())) kcal").font(.headline)
                         Button("Aggiungi a \(selected.name)") {
-                            onSelect(ClientPersonalFood(id: UUID(), catalogFoodID: selected.id, name: selected.name, quantityGrams: grams, caloriesPer100g: selected.caloriesPer100g, proteinPer100g: selected.proteinPer100g, carbsPer100g: selected.carbsPer100g, fatPer100g: selected.fatPer100g))
+                            onSelect(ClientNutritionCatalog.food(selected, quantity: grams))
                         }
                         .buttonStyle(ClayPrimaryButtonStyle())
+                        .disabled(!grams.isFinite || grams <= 0)
+                        }
                     }
                 }
             }
-            .searchable(text: $query, prompt: "Cerca alimenti CREA, USDA, OFF")
-            .task(id: query) { try? await Task.sleep(for: .milliseconds(350)); guard !Task.isCancelled else { return }; results = await session.searchPersonalFoods(query) }
+            .searchable(text: $query, prompt: "Cerca nel catalogo alimenti")
+            .task { await load(force: false) }
             .navigationTitle("Database alimenti").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
         }
+    }
+
+    private func load(force: Bool) async {
+        loading = true
+        catalog = await session.personalFoodCatalog(forceReload: force)
+        loading = false
     }
 }

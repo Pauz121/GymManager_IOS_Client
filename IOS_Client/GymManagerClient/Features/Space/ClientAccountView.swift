@@ -12,88 +12,85 @@ struct ClientAccountView: View {
     @State private var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ClientPageTitle("Account", eyebrow: "Profilo e sicurezza", subtitle: "Le tue informazioni e lo stato del percorso.")
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 14) {
-                        ClientProfileAvatar(image: avatarStore.image(for: identity.authUserID), initials: initials)
-                        VStack(alignment: .leading) { Text(identity.displayName).font(.title2.weight(.heavy)).foregroundStyle(.white); Text(identity.email ?? identity.username).font(.subheadline).foregroundStyle(.white.opacity(0.68)) }
+        Form {
+            Section("Profilo") {
+                HStack(spacing: 14) {
+                    ClientProfileAvatar(image: avatarStore.image(for: identity.authUserID), initials: initials, size: 48)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(identity.displayName).font(.headline).foregroundStyle(ClientClay.ink)
+                        Text(identity.email ?? identity.username).font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     }
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label(avatarStore.image(for: identity.authUserID) == nil ? "Aggiungi foto profilo" : "Cambia foto profilo", systemImage: "photo.badge.plus")
-                    }
-                    .buttonStyle(ClaySecondaryButtonStyle())
-                    if avatarStore.image(for: identity.authUserID) != nil {
-                        Button(role: .destructive) {
-                            do { try avatarStore.remove(userID: identity.authUserID) }
-                            catch { session.notice = "Non è stato possibile rimuovere la foto profilo." }
-                        } label: {
-                            Label("Rimuovi foto", systemImage: "trash")
-                        }
-                        .font(.subheadline.weight(.semibold))
-                    }
-                    Text("La foto resta protetta su questo iPhone e non viene caricata sul profilo online.")
-                        .font(.caption).foregroundStyle(.white.opacity(0.66))
-                    ClientBadge(text: identity.mode == .trainerConnected ? "Cliente seguito" : "Account personale", tint: identity.mode == .trainerConnected ? ClientClay.sage : ClientClay.warning)
-                }.premiumCard(tint: identity.mode == .trainerConnected ? ClientClay.sage : ClientClay.accent)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(identity.mode == .trainerConnected ? "Il mio Trainer" : "Collega un Trainer").font(.title3.weight(.bold))
-                    if identity.mode == .trainerConnected {
-                        Text(identity.trainerName ?? "Trainer collegato").font(.headline)
-                        Label("Il collegamento è protetto e non può essere rimosso dall’app.", systemImage: "lock.shield").font(.footnote).foregroundStyle(ClientClay.secondaryInk)
-                    } else {
-                        Text("Nessun Trainer collegato")
-                            .font(.headline)
-                        Text("Puoi usare Fit Manager in autonomia oppure collegare la scheda ricevuta dal tuo Trainer.")
-                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                        if source == .live {
-                            TrainerCodeEntryForm(code: $trainerCode, actionTitle: "Collega il mio Trainer") {
-                                await session.connectTrainer(code: trainerCode)
-                            }
-                        } else {
-                            Text("La modalità demo non invia né consuma codici reali.")
-                                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
-                        }
-                    }
-                }.clayCard()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Sicurezza").font(.title3.weight(.bold))
+                }
+                LabeledContent("Nome utente", value: identity.username)
+                LabeledContent("Modalità", value: identity.mode == .trainerConnected ? "Cliente seguito" : "Account personale")
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Label(avatarStore.image(for: identity.authUserID) == nil ? "Aggiungi foto profilo" : "Cambia foto profilo", systemImage: "photo.badge.plus")
+                        .frame(minHeight: 44)
+                }
+                if avatarStore.image(for: identity.authUserID) != nil {
+                    Button("Rimuovi foto", role: .destructive) {
+                        do { try avatarStore.remove(userID: identity.authUserID) }
+                        catch { session.notice = "Non è stato possibile rimuovere la foto profilo." }
+                    }.frame(minHeight: 44)
+                }
+                Text("La foto è salvata solo su questo iPhone. Nome e dati account sono attualmente in sola lettura.")
+                    .font(.footnote).foregroundStyle(ClientClay.secondaryInk)
+            }
+            Section("Trainer") {
+                if identity.mode == .trainerConnected {
+                    Label(identity.trainerName ?? "Trainer collegato", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.headline)
+                    Text("Allenamento e nutrizione sono gestiti dal Trainer. I tuoi piani personali precedenti restano nello storico.")
+                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    Label("Il collegamento non può essere rimosso dall’app.", systemImage: "lock.shield")
+                        .font(.footnote).foregroundStyle(ClientClay.secondaryInk)
+                } else {
+                    Text("Nessun Trainer collegato").font(.headline)
                     if source == .live {
-                        SecureField("Nuova password", text: $password).textContentType(.newPassword).clientInputField()
-                        SecureField("Conferma password", text: $confirmation).textContentType(.newPassword).clientInputField()
+                        TrainerCodeEntryForm(code: $trainerCode, actionTitle: "Collega il mio Trainer") {
+                            await session.connectTrainer(code: trainerCode)
+                        }
+                    } else {
+                        Text("La demo non invia né consuma codici reali.").font(.footnote)
+                    }
+                }
+            }
+            Section("Preferenze") {
+                NavigationLink { ClientAppearanceView() } label: { Label("Aspetto", systemImage: "circle.lefthalf.filled") }
+                LabeledContent("Unità di misura", value: "kg · cm")
+            }
+            Section("Sicurezza") {
+                if source == .live {
+                    DisclosureGroup("Cambia password") {
+                        SecureField("Nuova password", text: $password).textContentType(.newPassword)
+                        SecureField("Conferma password", text: $confirmation).textContentType(.newPassword)
                         Button("Aggiorna password") {
                             guard password == confirmation else { session.notice = "Le password non coincidono."; return }
                             Task { await session.updatePassword(password); password = ""; confirmation = "" }
                         }
-                        .buttonStyle(ClaySecondaryButtonStyle())
+                        .frame(minHeight: 44)
                         .disabled(session.isSubmitting || password.isEmpty || confirmation.isEmpty)
-                    } else {
-                        Text("La demo non crea né modifica credenziali.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     }
-                }.clayCard()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Preferenze").font(.title3.weight(.bold))
-                    LabeledContent("Unità di misura", value: "kg · cm")
-                    LabeledContent("Aspetto", value: "Scuro performance")
-                    LabeledContent("Notifiche", value: "Fase 2")
-                }.clayCard()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Privacy e assistenza").font(.title3.weight(.bold))
-                    Text("I riferimenti ufficiali saranno collegati prima della pubblicazione.").font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                    Button("Privacy") {}.disabled(true)
-                    Button("Termini") {}.disabled(true)
-                    Button("Supporto") {}.disabled(true)
-                }.clayCard()
-
-                Button(role: .destructive) { Task { await session.signOut() } } label: { Label("Esci dal mio account", systemImage: "rectangle.portrait.and.arrow.right") }
-                    .buttonStyle(ClaySecondaryButtonStyle())
-            }.padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
+                } else {
+                    Text("La demo non modifica credenziali.").font(.subheadline)
+                }
+            }
+            Section("Privacy e assistenza") {
+                NavigationLink { ClientAccountInformationView(topic: .privacy) } label: { Label("Privacy", systemImage: "hand.raised") }
+                NavigationLink { ClientAccountInformationView(topic: .support) } label: { Label("Supporto", systemImage: "questionmark.circle") }
+            }
+            Section {
+                NavigationLink { ClientAccountInformationView(topic: .deletion) } label: {
+                    Label("Elimina account", systemImage: "trash").foregroundStyle(ClientClay.color(.error))
+                }
+                Button(role: .destructive) { Task { await session.signOut() } } label: {
+                    Label("Esci dal mio account", systemImage: "rectangle.portrait.and.arrow.right").frame(minHeight: 44)
+                }
+            } footer: {
+                Text("Eliminazione: percorso server Client non ancora disponibile. Nessuna cancellazione viene simulata sul dispositivo.")
+            }
         }
+        .scrollContentBackground(.hidden)
         .clientPage().navigationTitle("Account").navigationBarTitleDisplayMode(.inline)
         .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }
         .onChange(of: selectedPhoto) { _, item in

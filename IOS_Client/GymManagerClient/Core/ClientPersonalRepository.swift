@@ -27,10 +27,38 @@ struct ClientPersonalRepository {
     }
 
     func saveWorkoutPlan(_ plan: ClientPersonalWorkoutPlan, userID: UUID) async throws {
-        try await client.from("client_personal_workout_plans").upsert(
-            PersonalWorkoutWriteRow(id: plan.id, ownerUserID: userID, title: plan.title, status: plan.status.rawValue, planPayload: plan),
-            onConflict: "id"
-        ).execute()
+        try await saveWorkoutPlans([plan], userID: userID)
+    }
+
+    func saveWorkoutPlans(_ plans: [ClientPersonalWorkoutPlan], userID: UUID) async throws {
+        try await requireStandaloneWorkoutOwner(userID)
+        let rows = plans.map { PersonalWorkoutWriteRow(id: $0.id, ownerUserID: userID, title: $0.title, status: $0.status.rawValue, planPayload: $0) }
+        // One PostgREST write: new activation and old archives succeed or fail together.
+        try await client.from("client_personal_workout_plans").upsert(rows, onConflict: "id").execute()
+    }
+
+    /// Defense in depth for normal app calls. RLS remains mandatory against races/direct REST calls.
+    private func requireStandaloneWorkoutOwner(_ userID: UUID) async throws {
+        let active = try await client.auth.session
+        guard active.user.id == userID else { throw ClientWorkoutGenerationEligibility.deniedUnauthenticated }
+        struct Profile: Decodable { let role: String; let status: String; let is_active: Bool }
+        struct Link: Decodable { let id: UUID }
+        let profiles: [Profile] = try await client.from("profiles").select("role,status,is_active")
+            .eq("id", value: userID.uuidString).limit(1).execute().value
+        guard profiles.first?.role == "client", profiles.first?.status == "active", profiles.first?.is_active == true else {
+            throw ClientWorkoutGenerationEligibility.deniedUnauthenticated
+        }
+        let links: [Link] = try await client.from("clients").select("id")
+            .eq("auth_user_id", value: userID.uuidString).limit(1).execute().value
+        guard links.isEmpty else { throw ClientWorkoutGenerationEligibility.deniedTrainerManaged }
+        try Task.checkCancellation()
+    }
+
+    func activeWorkoutPlans(userID: UUID) async throws -> [ClientPersonalWorkoutPlan] {
+        let rows: [PersonalWorkoutRow] = try await client.from("client_personal_workout_plans")
+            .select("id,title,status,plan_payload").eq("owner_user_id", value: userID.uuidString)
+            .eq("status", value: "active").execute().value
+        return rows.map(\.plan)
     }
 
     func workoutPlan(id: UUID, userID: UUID) async throws -> ClientPersonalWorkoutPlan? {
@@ -48,14 +76,58 @@ struct ClientPersonalRepository {
     }
 
     func saveNutritionPlan(_ plan: ClientPersonalNutritionPlan, userID: UUID) async throws {
-        try await client.from("client_personal_nutrition_plans").upsert(
-            PersonalNutritionWriteRow(id: plan.id, ownerUserID: userID, title: plan.title, status: plan.status.rawValue, planPayload: plan),
-            onConflict: "id"
-        ).execute()
+        try await saveNutritionPlans([plan], userID: userID)
+    }
+
+    func saveNutritionPlans(_ plans: [ClientPersonalNutritionPlan], userID: UUID) async throws {
+        try await requireStandaloneNutritionOwner(userID)
+        if plans.contains(where: { $0.generationMetadata != nil || $0.creationAnswers?.coachProfile != nil }) {
+            let catalog = try await foodCatalog()
+            for plan in plans where plan.generationMetadata != nil || plan.creationAnswers?.coachProfile != nil {
+                let context = ClientNutritionCoachContext(mode: .standalone, profile: plan.creationAnswers?.coachProfile)
+                guard ClientNutritionPlanValidator.inspect(plan, context: context, catalog: catalog).isEmpty else {
+                    throw ClientNutritionGenerationEligibility.invalidPlan
+                }
+            }
+        }
+        let rows = plans.map { PersonalNutritionWriteRow(id: $0.id, ownerUserID: userID, title: $0.title, status: $0.status.rawValue, planPayload: $0) }
+        try await client.from("client_personal_nutrition_plans").upsert(rows, onConflict: "id").execute()
+    }
+
+    /// Fresh server-backed preflight; RLS is still required against direct REST and linking races.
+    private func requireStandaloneNutritionOwner(_ userID: UUID) async throws {
+        let session = try await client.auth.session
+        guard session.user.id == userID else { throw ClientNutritionGenerationEligibility.deniedUnauthenticated }
+        struct Profile: Decodable { let role: String; let status: String; let is_active: Bool }
+        struct Link: Decodable { let id: UUID }
+        let profiles: [Profile] = try await client.from("profiles").select("role,status,is_active")
+            .eq("id", value: userID.uuidString).limit(1).execute().value
+        guard profiles.first?.role == "client", profiles.first?.status == "active", profiles.first?.is_active == true else {
+            throw ClientNutritionGenerationEligibility.deniedUnauthenticated
+        }
+        let links: [Link] = try await client.from("clients").select("id")
+            .eq("auth_user_id", value: userID.uuidString).limit(1).execute().value
+        guard links.isEmpty else { throw ClientNutritionGenerationEligibility.deniedTrainerManaged }
+        try Task.checkCancellation()
+    }
+
+    func activeNutritionPlans(userID: UUID) async throws -> [ClientPersonalNutritionPlan] {
+        let rows: [PersonalNutritionRow] = try await client.from("client_personal_nutrition_plans")
+            .select("id,title,status,plan_payload").eq("owner_user_id", value: userID.uuidString)
+            .eq("status", value: "active").execute().value
+        return rows.map(\.plan)
     }
 
     func deleteNutritionPlan(_ id: UUID) async throws {
         try await client.from("client_personal_nutrition_plans").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    func nutritionPlan(id: UUID, userID: UUID) async throws -> ClientPersonalNutritionPlan? {
+        let rows: [PersonalNutritionRow] = try await client.from("client_personal_nutrition_plans")
+            .select("id,title,status,plan_payload")
+            .eq("id", value: id.uuidString).eq("owner_user_id", value: userID.uuidString)
+            .limit(1).execute().value
+        return rows.first?.plan
     }
 
     func saveMealTemplate(_ template: ClientPersonalMealTemplate, userID: UUID) async throws {
@@ -79,7 +151,7 @@ struct ClientPersonalRepository {
 
     func searchExercises(_ query: String) async throws -> [ClientExerciseCatalogItem] {
         var request = client.from("exercises")
-            .select("id,name,muscle_group,instructions,video_url,source_key")
+            .select("*,muscle_links:exercise_muscle_groups(relevance,muscle_group:muscle_groups(id,name,source_key))")
             .eq("is_system", value: true)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { request = request.ilike("name", pattern: "%\(trimmed)%") }
@@ -89,7 +161,7 @@ struct ClientPersonalRepository {
 
     func exerciseCatalog() async throws -> [ClientExerciseCatalogItem] {
         let rows: [ExerciseCatalogRow] = try await client.from("exercises")
-            .select("id,name,muscle_group,instructions,video_url,source_key")
+            .select("*,muscle_links:exercise_muscle_groups(relevance,muscle_group:muscle_groups(id,name,source_key))")
             .eq("is_system", value: true)
             .order("name")
             .limit(500)
@@ -99,20 +171,19 @@ struct ClientPersonalRepository {
 
     func searchFoods(_ query: String) async throws -> [ClientFoodCatalogItem] {
         var request = client.from("food_references")
-            .select("id,name,name_it,serving_amount,calories_kcal,protein_g,carbohydrates_g,fat_g")
+            .select("id,name,name_it,serving_amount,serving_unit,calories_kcal,protein_g,carbohydrates_g,fat_g,category,provider,metadata,external_food_id,source_url,updated_at")
             .is("trainer_id", value: nil)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { request = request.or("name.ilike.%\(trimmed)%,name_it.ilike.%\(trimmed)%") }
         let rows: [FoodCatalogRow] = try await request.order("name").limit(60).execute().value
-        return rows.compactMap { row in
-            guard row.servingAmount > 0, let calories = row.caloriesKcal else { return nil }
-            let factor = 100 / row.servingAmount
-            return ClientFoodCatalogItem(
-                id: row.id, name: row.nameIT ?? row.name, caloriesPer100g: calories * factor,
-                proteinPer100g: row.proteinG.map { $0 * factor }, carbsPer100g: row.carbohydratesG.map { $0 * factor },
-                fatPer100g: row.fatG.map { $0 * factor }
-            )
-        }
+        return rows.compactMap(\.catalogItem)
+    }
+
+    func foodCatalog() async throws -> [ClientFoodCatalogItem] {
+        let rows: [FoodCatalogRow] = try await client.from("food_references")
+            .select("id,name,name_it,serving_amount,serving_unit,calories_kcal,protein_g,carbohydrates_g,fat_g,category,provider,metadata,external_food_id,source_url,updated_at")
+            .is("trainer_id", value: nil).order("name").limit(500).execute().value
+        return rows.compactMap(\.catalogItem)
     }
 
     func saveRunningResult(_ result: ClientRunningResult, userID: UUID) async throws {
@@ -184,27 +255,41 @@ private struct PersonalRunWriteRow: Encodable {
     enum CodingKeys: String, CodingKey { case id; case ownerUserID = "owner_user_id"; case resultPayload = "result_payload"; case completedAt = "completed_at"; case distanceKm = "distance_km"; case durationSeconds = "duration_seconds" }
 }
 
-private struct ExerciseCatalogRow: Decodable {
-    let id: UUID; let name: String; let muscleGroup: String?; let instructions: String?; let videoURL: String?; let sourceKey: String?
-    var catalogItem: ClientExerciseCatalogItem {
-        ClientExerciseCatalogItem(
-            id: id, name: name, muscleGroup: muscleGroup,
-            videoURL: videoURL.flatMap(URL.init(string:)), instructions: instructions, sourceKey: sourceKey
-        )
-    }
-    enum CodingKeys: String, CodingKey {
-        case id, name, instructions
-        case muscleGroup = "muscle_group"
-        case videoURL = "video_url"
-        case sourceKey = "source_key"
-    }
-}
+private typealias ExerciseCatalogRow = ClientExerciseCatalogRecord
 
 private struct FoodCatalogRow: Decodable {
     let id: UUID; let name: String; let nameIT: String?; let servingAmount: Double; let caloriesKcal: Double?
     let proteinG: Double?; let carbohydratesG: Double?; let fatG: Double?
+    let servingUnit: String?; let category: String?; let provider: String?; let metadata: FoodCatalogMetadata?
+    let externalFoodID: String?; let sourceURL: String?; let updatedAt: String?
+    var reviewedEvidence: ClientNutritionFoodEvidence? {
+        guard let e = metadata?.nutritionCoachReview, e.canonicalID == id, e.sourceID == externalFoodID,
+              e.source.rawValue == provider, e.sourceURL == sourceURL, e.cacheRevision == updatedAt,
+              e.sourceServingAmount == servingAmount, e.sourceServingUnit == servingUnit else { return nil }
+        return e
+    }
+    var catalogItem: ClientFoodCatalogItem? {
+        ClientNutritionCatalog.normalize(
+            id: id, name: nameIT ?? name, servingAmount: servingAmount, servingUnit: servingUnit ?? "",
+            calories: caloriesKcal, protein: proteinG, carbs: carbohydratesG, fat: fatG,
+            category: category, provider: provider, gramsPerPiece: metadata?.gramsPerPiece, nutritionEvidence: reviewedEvidence
+        )
+    }
     enum CodingKeys: String, CodingKey {
-        case id, name; case nameIT = "name_it"; case servingAmount = "serving_amount"; case caloriesKcal = "calories_kcal"
+        case id, name, category, provider, metadata; case servingUnit = "serving_unit"; case nameIT = "name_it"; case servingAmount = "serving_amount"; case caloriesKcal = "calories_kcal"
+        case externalFoodID = "external_food_id"; case sourceURL = "source_url"; case updatedAt = "updated_at"
         case proteinG = "protein_g"; case carbohydratesG = "carbohydrates_g"; case fatG = "fat_g"
+    }
+}
+
+private struct FoodCatalogMetadata: Decodable {
+    let gramsPerPiece: Double?
+    let nutritionCoachReview: ClientNutritionFoodEvidence?
+    enum CodingKeys: String, CodingKey { case gramsPerPiece = "grams_per_piece"; case nutritionCoachReview = "nutrition_coach_review" }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        // Malformed optional review must not break manual search or be admitted as safe.
+        gramsPerPiece = try? values.decode(Double.self, forKey: .gramsPerPiece)
+        nutritionCoachReview = try? values.decode(ClientNutritionFoodEvidence.self, forKey: .nutritionCoachReview)
     }
 }

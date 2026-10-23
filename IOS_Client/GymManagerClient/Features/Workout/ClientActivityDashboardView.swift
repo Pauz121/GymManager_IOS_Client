@@ -5,6 +5,7 @@ import SwiftUI
 struct ClientActivityDashboardView: View {
     let snapshot: ClientSnapshot
     @EnvironmentObject private var session: ClientSessionStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var displayedMonth = Date()
     @State private var selectedDate = Date()
 
@@ -38,7 +39,7 @@ struct ClientActivityDashboardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ClientPageTitle("Attività", eyebrow: "Tutto il movimento", subtitle: "Palestra e corsa, riunite senza duplicare le sessioni.")
+            Text("Attività").font(ClientTypography.section).foregroundStyle(ClientClay.color(.textPrimary))
             calendarCard
             selectedDayCard
             monthSummaryView
@@ -55,10 +56,11 @@ struct ClientActivityDashboardView: View {
                 Spacer()
                 VStack(spacing: 2) {
                     Text(displayedMonth.formatted(.dateTime.month(.wide).year()).capitalized)
-                        .font(.headline).foregroundStyle(ClientClay.ink)
+                        .font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
                     if !calendar.isDate(displayedMonth, equalTo: Date(), toGranularity: .month) {
                         Button("Oggi") { displayedMonth = Date(); selectedDate = Date() }
-                            .font(.caption.weight(.bold)).foregroundStyle(ClientClay.accent)
+                            .font(.subheadline.weight(.bold)).foregroundStyle(ClientClay.color(.brandAccent))
+                            .frame(minHeight: ClientControlSize.minimumTarget)
                     }
                 }
                 Spacer()
@@ -68,24 +70,52 @@ struct ClientActivityDashboardView: View {
                 .accessibilityLabel("Mese successivo")
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
-                ForEach(Array(["L", "M", "M", "G", "V", "S", "D"].enumerated()), id: \.offset) { _, day in
-                    Text(day).font(.caption2.weight(.bold)).foregroundStyle(ClientClay.secondaryInk).frame(height: 20)
-                }
-                ForEach(monthDates, id: \.self) { date in
-                    dayCell(date)
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibleDayPicker
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    calendarGrid.frame(minWidth: 7 * ClientControlSize.minimumTarget)
+                    accessibleDayPicker
                 }
             }
-            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
 
-            HStack(spacing: 14) {
-                legendItem("Palestra", symbol: "dumbbell.fill", tint: ClientClay.accent)
-                legendItem("Corsa", symbol: "figure.run", tint: ClientClay.runAccent)
-                legendItem("Entrambi", symbol: "square.stack.fill", tint: ClientClay.sage)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: ClientSpacing.control) { calendarLegend }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: ClientSpacing.related) { calendarLegend }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .clayCard(padding: 14)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
+    }
+
+    private var calendarGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: ClientSpacing.micro) {
+            ForEach(Array(["L", "M", "M", "G", "V", "S", "D"].enumerated()), id: \.offset) { _, day in
+                Text(day).font(.caption.weight(.bold)).foregroundStyle(ClientClay.color(.textSecondary))
+                    .accessibilityHidden(true)
+            }
+            ForEach(monthDates, id: \.self) { date in dayCell(date) }
+        }
+    }
+
+    private var accessibleDayPicker: some View {
+        VStack(alignment: .leading, spacing: ClientSpacing.related) {
+            DatePicker("Giorno da consultare", selection: $selectedDate,
+                       in: monthInterval.start...monthInterval.end.addingTimeInterval(-1),
+                       displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .environment(\.locale, Locale(identifier: "it_IT"))
+                .environment(\.calendar, calendar)
+            Text("Scegli un giorno: le attività sono elencate qui sotto.")
+                .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
+        }
+    }
+
+    @ViewBuilder private var calendarLegend: some View {
+        legendItem("Palestra", symbol: "dumbbell.fill", tint: ClientClay.color(.workoutAccent))
+        legendItem("Corsa", symbol: "figure.run", tint: ClientClay.color(.runningAccent))
+        legendItem("Entrambi", symbol: "square.stack.fill", tint: ClientClay.color(.success))
     }
 
     private func dayCell(_ date: Date) -> some View {
@@ -105,20 +135,22 @@ struct ClientActivityDashboardView: View {
             VStack(spacing: 3) {
                 Text(date.formatted(.dateTime.day()))
                     .font(.caption.weight(isSelected || isToday ? .bold : .medium))
-                    .foregroundStyle(hasActivity ? Color.white : isInMonth ? ClientClay.ink : ClientClay.tertiaryInk)
-                HStack(spacing: 2) {
-                    if hasGym { Image(systemName: "dumbbell.fill") }
-                    if hasRun { Image(systemName: "figure.run") }
+                    .underline(isToday, color: ClientClay.color(.brandAccent))
+                    .foregroundStyle(ClientClay.color(isInMonth ? .textPrimary : .textDisabled))
+                if hasActivity {
+                    Image(systemName: hasGym && hasRun ? "square.stack.fill" : hasGym ? "dumbbell.fill" : "figure.run")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(ClientClay.color(hasGym && hasRun ? .success : hasGym ? .workoutAccent : .runningAccent))
+                } else {
+                    // Reserves marker space without a false activity icon.
+                    Text(" ").font(.caption2).accessibilityHidden(true)
                 }
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(hasActivity ? Color.white : ClientClay.secondaryInk)
-                .frame(height: 10)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(dayCellBackground(hasGym: hasGym, hasRun: hasRun, isSelected: isSelected), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(isSelected ? Color.white.opacity(0.9) : isToday ? ClientClay.accentSoft : .clear, lineWidth: isSelected ? 2 : 1.5)
+                    .stroke(isSelected ? ClientClay.color(.textEmphasis) : .clear, lineWidth: 2)
             }
             .contentShape(Rectangle())
         }
@@ -131,51 +163,47 @@ struct ClientActivityDashboardView: View {
     }
 
     private func dayCellBackground(hasGym: Bool, hasRun: Bool, isSelected: Bool) -> AnyShapeStyle {
-        if hasGym && hasRun {
-            return AnyShapeStyle(LinearGradient(colors: [ClientClay.accent, ClientClay.runAccent], startPoint: .topLeading, endPoint: .bottomTrailing))
-        }
-        if hasGym { return AnyShapeStyle(ClientClay.accent.opacity(0.82)) }
-        if hasRun { return AnyShapeStyle(ClientClay.runAccent.opacity(0.82)) }
-        if isSelected { return AnyShapeStyle(ClientClay.surfaceElevated) }
+        if hasGym || hasRun { return AnyShapeStyle(ClientClay.color(.surfaceInteractive)) }
+        if isSelected { return AnyShapeStyle(ClientClay.color(.surfaceElevated)) }
         return AnyShapeStyle(Color.clear)
     }
 
     private var selectedDayCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(selectedDate.formatted(.dateTime.weekday(.wide).day().month(.wide)).uppercased())
-                .font(.caption.weight(.bold)).tracking(1).foregroundStyle(ClientClay.secondaryInk)
+            Text(selectedDate.formatted(.dateTime.weekday(.wide).day().month(.wide)).capitalized)
+                .font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
             if selectedItems.isEmpty {
                 Label("Nessuna attività registrata", systemImage: "calendar.badge.minus")
-                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk).padding(.vertical, 6)
+                    .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary)).padding(.vertical, 6)
             } else {
                 ForEach(selectedItems) { item in
                     activityRow(item)
-                    if item.id != selectedItems.last?.id { Divider().overlay(ClientClay.border) }
+                    if item.id != selectedItems.last?.id { Divider().overlay(ClientClay.color(.borderSubtle)) }
                 }
             }
         }
-        .clayCard()
+        .padding(.vertical, ClientSpacing.related)
     }
 
     private func activityRow(_ item: ClientActivityItem) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: item.kind == .gym ? "dumbbell.fill" : "figure.run")
-                .foregroundStyle(item.kind == .gym ? ClientClay.accent : ClientClay.runAccent)
+                .foregroundStyle(item.kind == .gym ? ClientClay.color(.workoutAccent) : ClientClay.color(.runningAccent))
                 .frame(width: 34, height: 34)
-                .background((item.kind == .gym ? ClientClay.accent : ClientClay.runAccent).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                .background((item.kind == .gym ? ClientClay.color(.workoutAccent) : ClientClay.color(.runningAccent)).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.kind == .gym ? "PALESTRA" : "CORSA").font(.caption2.weight(.bold)).tracking(0.8).foregroundStyle(ClientClay.secondaryInk)
-                Text(item.title).font(.headline).foregroundStyle(ClientClay.ink)
+                Text(item.kind == .gym ? "PALESTRA" : "CORSA").font(.caption2.weight(.bold)).tracking(0.8).foregroundStyle(ClientClay.color(.textSecondary))
+                Text(item.title).font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
                 HStack(spacing: 10) {
                     Label(ClientActivityFormat.duration(item.durationSeconds), systemImage: "timer")
                     if let distance = item.distanceKm {
                         Label("\(distance.formatted(.number.precision(.fractionLength(2)))) km", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                     }
                 }
-                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
                 if let pace = item.averagePaceMinutesPerKm, let speed = item.averageSpeedKmh {
                     Text("\(ClientActivityFormat.pace(pace)) · \(speed.formatted(.number.precision(.fractionLength(1)))) km/h")
-                        .font(.caption.monospacedDigit()).foregroundStyle(ClientClay.inkSoft)
+                        .font(.caption.monospacedDigit()).foregroundStyle(ClientClay.color(.textSecondary))
                 }
             }
         }
@@ -184,13 +212,14 @@ struct ClientActivityDashboardView: View {
 
     private var monthSummaryView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ClientSectionHeader(title: "Riepilogo del mese", detail: displayedMonth.formatted(.dateTime.month(.wide)).capitalized, symbol: "calendar")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                summaryTile("Palestra", value: "\(monthSummary.gymSessions)", symbol: "dumbbell.fill", tint: ClientClay.accent)
-                summaryTile("Corse", value: "\(monthSummary.runs)", symbol: "figure.run", tint: ClientClay.runAccent)
-                summaryTile("Km corsi", value: monthSummary.runningDistanceKm > 0 ? monthSummary.runningDistanceKm.formatted(.number.precision(.fractionLength(1))) : "—", symbol: "road.lanes", tint: ClientClay.runAccent)
-                summaryTile("Giorni attivi", value: "\(monthSummary.activeDays)", symbol: "calendar.badge.checkmark", tint: ClientClay.sage)
-                summaryTile("PB ottenuti", value: "\(monthSummary.personalBests)", symbol: "trophy.fill", tint: ClientClay.gold)
+            Label("Riepilogo del mese · \(displayedMonth.formatted(.dateTime.month(.wide)).capitalized)", systemImage: "calendar")
+                .font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
+            LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                summaryTile("Palestra", value: "\(monthSummary.gymSessions)", symbol: "dumbbell.fill", tint: ClientClay.color(.workoutAccent))
+                summaryTile("Corse", value: "\(monthSummary.runs)", symbol: "figure.run", tint: ClientClay.color(.runningAccent))
+                summaryTile("Km corsi", value: monthSummary.runningDistanceKm > 0 ? monthSummary.runningDistanceKm.formatted(.number.precision(.fractionLength(1))) : "—", symbol: "road.lanes", tint: ClientClay.color(.runningAccent))
+                summaryTile("Giorni attivi", value: "\(monthSummary.activeDays)", symbol: "calendar.badge.checkmark", tint: ClientClay.color(.success))
+                summaryTile("PB ottenuti", value: "\(monthSummary.personalBests)", symbol: "trophy.fill", tint: ClientClay.color(.warning))
             }
         }
     }
@@ -198,15 +227,17 @@ struct ClientActivityDashboardView: View {
     private func summaryTile(_ title: String, value: String, symbol: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Label(title, systemImage: symbol).font(.caption.weight(.semibold)).foregroundStyle(tint)
-            Text(value).font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit()).foregroundStyle(ClientClay.ink)
+            Text(value).font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit()).foregroundStyle(ClientClay.color(.textPrimary))
         }
-        .clayCard(padding: 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         .accessibilityElement(children: .combine)
     }
 
     private func legendItem(_ text: String, symbol: String, tint: Color) -> some View {
-        Label(text, systemImage: symbol).font(.caption2.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
-            .symbolRenderingMode(.monochrome).tint(tint)
+        Label { Text(text).foregroundStyle(ClientClay.color(.textSecondary)) }
+            icon: { Image(systemName: symbol).foregroundStyle(tint) }
+            .font(.caption.weight(.semibold))
     }
 
     private func moveMonth(by offset: Int) {
@@ -241,76 +272,49 @@ struct ClientActivityRecapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             compactHeader
-            hero
+            ClientActivityRecapHeader(activeDays: summary.activeDays, duration: ClientActivityFormat.compactDuration(summary.activeSeconds))
             periodSelector
             metricGrid
             if summary.runningDistanceKm > 0 { distanceScaleIndicator }
             if buckets.isEmpty {
-                ClientEmptyState(symbol: "chart.bar.xaxis", title: "Nessuna attività nel periodo", message: "Completa una sessione in palestra o una corsa per vedere il riepilogo.")
+                recapStatus("Nessuna attività nel periodo. Le sessioni completate appariranno qui.", symbol: "chart.bar.xaxis")
             } else {
                 if buckets.contains(where: { $0.runningKm > 0 }) {
                     distanceChart
                 } else {
-                    ClientEmptyState(symbol: "figure.run", title: "Nessuna distanza registrata", message: "Il grafico mostra solo chilometri GPS reali delle corse completate.")
+                    recapStatus("Nessuna distanza GPS registrata in questo periodo.", symbol: "location.slash")
                 }
             }
         }
     }
 
     private var compactHeader: some View {
-        HStack(spacing: 11) {
-            Image(systemName: "chart.xyaxis.line")
-                .font(.subheadline.weight(.bold)).foregroundStyle(ClientClay.sage)
-                .frame(width: 36, height: 36)
-                .background(ClientClay.sage.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Riepilogo").font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
-                Text("Attività registrate nel periodo").font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            }
+        VStack(alignment: .leading, spacing: ClientSpacing.micro) {
+            Text("Riepilogo").font(ClientTypography.section).foregroundStyle(ClientClay.color(.textPrimary))
+            Text(period == .month ? "Questo mese" : period == .year ? "Ultimo anno" : "Ultimi \(period.rawValue) mesi")
+                .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
         }
         .accessibilityElement(children: .combine)
     }
 
     private var periodSelector: some View {
-        HStack(spacing: 4) {
-            ForEach(ClientActivityPeriod.allCases) { item in
-                Button {
-                    period = item
-                    ClientHaptics.selection()
-                } label: {
-                    Text(item.title).font(.caption.weight(.bold)).frame(maxWidth: .infinity, minHeight: 44)
-                        .foregroundStyle(period == item ? .white : ClientClay.secondaryInk)
-                        .background(period == item ? ClientClay.accent : .clear, in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(period == item ? [.isSelected] : [])
-            }
-        }
-        .padding(4).background(ClientClay.inset, in: RoundedRectangle(cornerRadius: 16))
-        .overlay { RoundedRectangle(cornerRadius: 16).stroke(ClientClay.border) }
+        ClientCompactSelector(values: ClientActivityPeriod.allCases, selection: $period,
+                              title: { $0.title }, accessibilityTitle: "Periodo del riepilogo")
     }
 
-    private var hero: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("GIORNI ATTIVI").font(.caption.weight(.bold)).tracking(1).foregroundStyle(.white.opacity(0.64))
-                Text("\(summary.activeDays)").font(.system(size: 30, weight: .heavy, design: .rounded).monospacedDigit()).foregroundStyle(.white)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("TEMPO TOTALE").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.64))
-                Text(ClientActivityFormat.compactDuration(summary.activeSeconds)).font(.headline.monospacedDigit().weight(.bold)).foregroundStyle(.white)
-            }
-        }
-        .premiumCard(tint: ClientClay.sage, padding: 12)
+    private func recapStatus(_ text: String, symbol: String) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, ClientSpacing.related)
     }
 
     private var metricGrid: some View {
         LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            compactMetric("Palestra", value: "\(summary.gymSessions)", symbol: "dumbbell.fill", tint: ClientClay.accent)
-            compactMetric("Corsa", value: "\(summary.runs)", symbol: "figure.run", tint: ClientClay.runAccent)
-            compactMetric("Distanza", value: summary.runningDistanceKm > 0 ? "\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) km" : "—", symbol: "road.lanes", tint: ClientClay.runAccent)
-            compactMetric("Personal Best", value: "\(summary.personalBests)", symbol: "trophy.fill", tint: ClientClay.gold)
+            compactMetric("Palestra", value: "\(summary.gymSessions)", symbol: "dumbbell.fill", tint: ClientClay.color(.workoutAccent))
+            compactMetric("Corsa", value: "\(summary.runs)", symbol: "figure.run", tint: ClientClay.color(.runningAccent))
+            compactMetric("Distanza", value: summary.runningDistanceKm > 0 ? "\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) km" : "—", symbol: "road.lanes", tint: ClientClay.color(.runningAccent))
+            compactMetric("Personal Best", value: "\(summary.personalBests)", symbol: "trophy.fill", tint: ClientClay.color(.warning))
         }
     }
 
@@ -321,12 +325,12 @@ struct ClientActivityRecapView: View {
                 .frame(width: 34, height: 34)
                 .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
-                Text(value).font(.headline.monospacedDigit().weight(.bold)).foregroundStyle(ClientClay.ink)
-                Text(title).font(.caption2.weight(.semibold)).foregroundStyle(ClientClay.secondaryInk)
+                Text(value).font(.headline.monospacedDigit().weight(.bold)).foregroundStyle(ClientClay.color(.textPrimary))
+                Text(title).font(.caption2.weight(.semibold)).foregroundStyle(ClientClay.color(.textSecondary))
             }
             Spacer(minLength: 0)
         }
-        .clayCard(padding: 11)
+        .padding(.vertical, ClientSpacing.related)
         .accessibilityElement(children: .combine)
     }
 
@@ -336,18 +340,18 @@ struct ClientActivityRecapView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("Distanza nel periodo", systemImage: "road.lanes")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.ink)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.color(.textPrimary))
                 Spacer()
                 Text("\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) km")
-                    .font(.headline.monospacedDigit()).foregroundStyle(ClientClay.runAccent)
+                    .font(.headline.monospacedDigit()).foregroundStyle(ClientClay.color(.runningAccent))
             }
             GeometryReader { proxy in
                 let markerX = max(CGFloat(7), min(proxy.size.width - 7, proxy.size.width * CGFloat(ratio)))
                 ZStack(alignment: .leading) {
-                    Capsule().fill(ClientClay.inset).frame(height: 8)
-                    Capsule().fill(ClientClay.runAccent.opacity(0.55)).frame(width: markerX, height: 8)
-                    Circle().fill(ClientClay.runAccent).frame(width: 14, height: 14)
-                        .overlay { Circle().stroke(ClientClay.ink, lineWidth: 2) }
+                    Capsule().fill(ClientClay.color(.surfaceSecondary)).frame(height: 8)
+                    Capsule().fill(ClientClay.color(.runningAccent).opacity(0.55)).frame(width: markerX, height: 8)
+                    Circle().fill(ClientClay.color(.runningAccent)).frame(width: 14, height: 14)
+                        .overlay { Circle().stroke(ClientClay.color(.textPrimary), lineWidth: 2) }
                         .offset(x: markerX - 7)
                 }
                 .frame(maxHeight: .infinity)
@@ -358,9 +362,9 @@ struct ClientActivityRecapView: View {
                 Spacer()
                 Text("\(maximum.formatted(.number.precision(.fractionLength(0)))) km")
             }
-            .font(.caption2.monospacedDigit()).foregroundStyle(ClientClay.secondaryInk)
+            .font(.caption2.monospacedDigit()).foregroundStyle(ClientClay.color(.textSecondary))
         }
-        .clayCard(padding: 13)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Indicatore distanza percorsa")
         .accessibilityValue("\(summary.runningDistanceKm.formatted(.number.precision(.fractionLength(1)))) chilometri su una scala di \(maximum.formatted(.number.precision(.fractionLength(0))))")
@@ -368,34 +372,67 @@ struct ClientActivityRecapView: View {
 
     private var distanceChart: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ClientSectionHeader(title: "Chilometri corsi", detail: "km per periodo", symbol: "chart.xyaxis.line")
+            Label("Chilometri corsi · km per periodo", systemImage: "chart.xyaxis.line")
+                .font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
             Chart(buckets) { bucket in
                 AreaMark(
                     x: .value("Periodo", bucket.label),
                     y: .value("Chilometri", bucket.runningKm)
                 )
                 .interpolationMethod(.catmullRom)
-                .foregroundStyle(LinearGradient(colors: [ClientClay.runAccent.opacity(0.30), ClientClay.runAccent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                .foregroundStyle(LinearGradient(colors: [ClientClay.color(.runningAccent).opacity(0.30), ClientClay.color(.runningAccent).opacity(0.02)], startPoint: .top, endPoint: .bottom))
                 LineMark(
                     x: .value("Periodo", bucket.label),
                     y: .value("Chilometri", bucket.runningKm)
                 )
                 .interpolationMethod(.catmullRom)
-                .foregroundStyle(ClientClay.runAccent)
+                .foregroundStyle(ClientClay.color(.runningAccent))
                 .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                 PointMark(
                     x: .value("Periodo", bucket.label),
                     y: .value("Chilometri", bucket.runningKm)
                 )
-                .foregroundStyle(ClientClay.runAccent)
+                .foregroundStyle(ClientClay.color(.runningAccent))
             }
             .frame(height: 150)
             .chartYAxisLabel("km")
-            .chartPlotStyle { $0.background(ClientClay.inset.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 12)) }
+            .chartPlotStyle { $0.background(ClientClay.color(.surfaceSecondary).opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 12)) }
         }
-        .clayCard(padding: 14)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Grafico dei chilometri corsi nel periodo selezionato")
+    }
+}
+
+/// The same header used by Riepilogo, isolated for native layout regression tests.
+/// Inline summary, not another hero. The vertical candidate wraps at large type.
+struct ClientActivityRecapHeader: View {
+    let activeDays: Int
+    let duration: String
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: ClientSpacing.section) { metrics }
+                .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: ClientSpacing.related) { metrics }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, ClientSpacing.micro)
+    }
+
+    @ViewBuilder private var metrics: some View {
+        metric(title: "giorni attivi", value: "\(activeDays)")
+        metric(title: "tempo totale", value: duration)
+    }
+
+    private func metric(title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: ClientSpacing.micro) {
+            Text(value).font(.headline.monospacedDigit()).foregroundStyle(ClientClay.color(.textPrimary))
+            Text(title).font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 }
 

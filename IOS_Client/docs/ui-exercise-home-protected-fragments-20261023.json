@@ -1,0 +1,38 @@
+[
+  {
+    "path": "GymManagerClient/Features/Workout/ClientWorkoutView.swift",
+    "start": "",
+    "end": "",
+    "sha256": "0C803A255DA68EF1E467A3684E91E28A58A9313E09683B0115A16AC9CB6B29A5"
+  },
+  {
+    "path": "GymManagerClient/Core/ClientSessionStore.swift",
+    "start": "    func updatePassword",
+    "end": "    private func load",
+    "sha256": "923B6A747E6EA642626DB41C102D894684C83A0042541EA09284EF7E829A0E55"
+  },
+  {
+    "path": "GymManagerClient/Core/ClientRepository.swift",
+    "start": "    private func workout",
+    "end": "",
+    "sha256": "B887447163FA79ED0D2D75B225EFEA89EE0B7DC60E2EA52CE0E1025B85224AC3"
+  },
+  {
+    "path": "GymManagerClient/Features/Workout/ClientWorkoutExecutionView.swift",
+    "start": "    private func prescription",
+    "end": "private struct WorkoutElapsedView",
+    "sha256": "64BA4B01055999052132E0633911572C5C6641655679939421AA4DF87A5C155B"
+  },
+  {
+    "path": "GymManagerClient/Features/Workout/ClientExerciseDetailView.swift",
+    "start": "    private var history:",
+    "end": "    var body:",
+    "sha256": "213ECE625806369EC11631EC862915F250A8E2FBC90F1502AE77147771C24F94"
+  },
+  {
+    "path": "GymManagerRunWidget/GymManagerRunLiveActivity.swift",
+    "start": "struct GymManagerRunLiveActivity:",
+    "end": "",
+    "sha256": "F87736BFE6B5651D317606143DE3628CD6A263984ACFD0C5C279B92990DCC674"
+  }
+]

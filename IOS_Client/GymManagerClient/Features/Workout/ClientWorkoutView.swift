@@ -21,7 +21,6 @@ struct ClientWorkoutView: View {
     let snapshot: ClientSnapshot
     let identity: ClientIdentity
     @EnvironmentObject private var session: ClientSessionStore
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var category: Category = .activity
 
     private var plan: ClientWorkoutPlan? { snapshot.workout }
@@ -44,23 +43,15 @@ struct ClientWorkoutView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                LazyVGrid(
-                    columns: dynamicTypeSize.isAccessibilitySize
-                        ? [GridItem(.flexible())]
-                        : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(availableCategories, id: \.self) { item in
-                        categoryCard(item)
-                    }
-                }
-                .accessibilityLabel("Scegli Attività, Palestra, Corsa o Riepilogo")
+                ClientCompactSelector(values: availableCategories, selection: $category,
+                                      title: { $0.rawValue }, accessibilityTitle: "Sezioni Allenamento")
 
                 switch category {
                 case .activity:
                     ClientActivityDashboardView(snapshot: snapshot)
                 case .gym:
-                    gymContent
+                    ClientContentGate(section: .workout, state: snapshot.contentState(for: .workout), isRefreshing: session.isRefreshing,
+                                      retry: { Task { await session.refresh() } }) { gymContent }
                 case .running:
                     ClientRunningView(plan: runningPlan)
                 case .recap:
@@ -87,64 +78,28 @@ struct ClientWorkoutView: View {
         }
     }
 
-    private func categoryCard(_ item: Category) -> some View {
-        Button {
-            ClientHaptics.selection()
-            withAnimation(.snappy(duration: 0.22)) { category = item }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: item.symbol)
-                    .font(.title3.weight(.bold))
-                    .frame(width: 38, height: 38)
-                    .background((category == item ? Color.white : ClientClay.accent).opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                Text(item.rawValue)
-                    .font(.headline.weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(category == item ? Color.white : ClientClay.ink)
-            .padding(.horizontal, 11).padding(.vertical, 9)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-            .background(category == item ? ClientClay.brandGradient : LinearGradient(colors: [ClientClay.surfaceElevated, ClientClay.surface], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(category == item ? ClientClay.accentSoft.opacity(0.52) : ClientClay.border) }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(category == item ? [.isSelected] : [])
-        .accessibilityHint("Mostra la sezione \(item.rawValue)")
-    }
-
-    @ViewBuilder private var gymContent: some View {
+    private var gymContent: some View {
+        VStack(alignment: .leading, spacing: ClientSpacing.control) {
         if let plan {
             NavigationLink {
                 ClientWorkoutPlanDetailView(plan: plan, isHistorical: false)
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "list.bullet.clipboard.fill")
-                        .font(.title3).foregroundStyle(ClientClay.accentSoft)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(plan.isEffective() ? "PIANO ATTIVO" : "PIANO PUBBLICATO").font(.caption2.weight(.bold)).tracking(1).foregroundStyle(.white.opacity(0.62))
-                        Text(plan.title).font(.headline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
-                        Text(plan.isEffective() ? "Settimana \(plan.currentWeek) · sola lettura" : "Disponibile dal \(plan.startsOn ?? "periodo indicato dal Trainer")")
-                            .font(.caption).foregroundStyle(.white.opacity(0.68))
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.7))
-                }
-                .premiumCard(tint: ClientClay.accent, padding: 14)
+                ClientGymPlanHeader(plan: plan)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Apre il piano attivo completo in sola lettura")
 
             if !plan.isEffective() {
-                ClientEmptyState(symbol: "calendar.badge.clock", title: "Piano in arrivo", message: "La scheda è già disponibile in sola lettura e inizierà nel periodo indicato dal Trainer.")
+                gymStatus("Piano in arrivo · già consultabile", symbol: "calendar.badge.clock")
             } else if let today = todayWorkout {
                 todayCard(plan: plan, workout: today)
             } else {
-                ClientEmptyState(symbol: "moon.zzz", title: "Oggi riposo", message: "Puoi consultare le altre sessioni senza avviarne una per errore.")
+                gymStatus("Oggi riposo · consulta le sessioni del piano", symbol: "moon.zzz")
             }
 
-            ClientSectionHeader(title: "Allenamenti del piano", detail: "\(plan.sessions.count) sessioni", symbol: "list.bullet.rectangle.portrait")
+            Label("Allenamenti del piano · \(plan.sessions.count) sessioni", systemImage: "list.bullet.rectangle.portrait")
+                .font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
+                .padding(.top, ClientSpacing.related)
             ForEach(plan.sessions) { workout in
                 NavigationLink {
                     ClientWorkoutSessionDetailView(plan: plan, workout: workout)
@@ -154,7 +109,9 @@ struct ClientWorkoutView: View {
                 .buttonStyle(.plain)
             }
 
-            ClientSectionHeader(title: "Storico schede", detail: "Sola lettura", symbol: "clock.arrow.circlepath")
+            Label("Storico schede · sola lettura", systemImage: "clock.arrow.circlepath")
+                .font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
+                .padding(.top, ClientSpacing.related)
             if let history = snapshot.workoutHistory, !history.isEmpty {
                 ForEach(history) { oldPlan in
                     NavigationLink {
@@ -166,8 +123,8 @@ struct ClientWorkoutView: View {
                 }
             } else {
                 Text("Nessun piano precedente disponibile.")
-                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                    .clayCard(padding: 14)
+                    .font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
+                    .padding(.vertical, ClientSpacing.related)
             }
         } else if let workoutFailure {
             ClientFailureView(message: workoutFailure) { Task { await session.refresh() } }
@@ -177,6 +134,15 @@ struct ClientWorkoutView: View {
         ClientPersonalWorkoutLibraryView(
             allowsEditing: ClientAccessPolicy.canManagePersonalWorkoutPlans(in: identity.mode)
         )
+        }
+    }
+
+    private func gymStatus(_ text: String, symbol: String) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.subheadline)
+            .foregroundStyle(ClientClay.color(.textSecondary))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, ClientSpacing.related)
     }
 
     private func todayCard(plan: ClientWorkoutPlan, workout: ClientWorkoutSession) -> some View {
@@ -184,23 +150,24 @@ struct ClientWorkoutView: View {
         return NavigationLink {
             ClientWorkoutSessionDetailView(plan: plan, workout: workout)
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
+            VStack(alignment: .leading, spacing: ClientSpacing.micro) {
+                HStack(alignment: .top) {
                     Label("Allenamento di oggi", systemImage: execution?.isCompleted == true ? "checkmark.circle.fill" : "play.circle.fill")
-                        .font(.headline).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : ClientClay.accentSoft)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(ClientClay.color(execution?.isCompleted == true ? .success : .workoutAccent))
                     Spacer()
-                    Image(systemName: "chevron.right").foregroundStyle(.white.opacity(0.7))
+                    Image(systemName: "chevron.right").foregroundStyle(ClientClay.color(.textSecondary))
                 }
-                Text(workout.name).font(.system(.title3, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                Text(workout.name).font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
                 Text("\(workout.exercises.count) esercizi\(workout.durationMinutes.map { " · \($0) min" } ?? "")")
-                    .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                    .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
                 Label(
                     execution?.isCompleted == true ? "Completato · consulta" : execution == nil ? "Apri e inizia" : "Apri e riprendi",
                     systemImage: execution?.isCompleted == true ? "checkmark.seal.fill" : "arrow.right.circle.fill"
                 )
-                .font(.headline).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : ClientClay.accentSoft)
+                .font(.subheadline).foregroundStyle(ClientClay.color(execution?.isCompleted == true ? .success : .workoutAccent))
             }
-            .premiumCard(tint: execution?.isCompleted == true ? ClientClay.sage : ClientClay.accent, padding: 15)
+            .frame(maxWidth: .infinity, minHeight: ClientControlSize.minimumTarget, alignment: .leading)
+            .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Apre l’allenamento di oggi")
@@ -208,46 +175,73 @@ struct ClientWorkoutView: View {
 
     private func historicalPlanRow(_ plan: ClientWorkoutPlan) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "archivebox.fill").foregroundStyle(ClientClay.secondaryInk)
+            Image(systemName: "archivebox.fill").foregroundStyle(ClientClay.color(.textSecondary))
             VStack(alignment: .leading, spacing: 3) {
-                Text(plan.title).font(.headline).foregroundStyle(ClientClay.ink)
+                Text(plan.title).font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
                 Text([plan.startsOn, plan.endsOn].compactMap { $0 }.joined(separator: " – "))
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                    .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
             }
             Spacer()
-            Image(systemName: "lock.fill").font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.secondaryInk)
+            Image(systemName: "lock.fill").font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
+            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.color(.textSecondary))
         }
-        .clayCard(padding: 14)
+        .frame(minHeight: ClientControlSize.minimumTarget)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Apre il piano precedente in sola lettura")
     }
 
     private func sessionCard(plan: ClientWorkoutPlan, workout: ClientWorkoutSession) -> some View {
         let execution = session.workoutExecution(sessionID: workout.id)
-        return HStack(spacing: 14) {
+        return HStack(spacing: ClientSpacing.control) {
             Image(systemName: execution?.isCompleted == true ? "checkmark.circle.fill" : workout.id == plan.todaySessionID ? "play.circle.fill" : "figure.strengthtraining.traditional")
-                .font(.title2).foregroundStyle(execution?.isCompleted == true ? ClientClay.sage : workout.id == plan.todaySessionID ? ClientClay.accent : ClientClay.secondaryInk)
+                .font(.title3).foregroundStyle(ClientClay.color(execution?.isCompleted == true ? .success : workout.id == plan.todaySessionID ? .workoutAccent : .textSecondary))
             VStack(alignment: .leading, spacing: 4) {
-                Text(workout.name).font(.headline).foregroundStyle(ClientClay.ink)
+                Text(workout.name).font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
                 Text("\(workout.exercises.count) esercizi\(workout.durationMinutes.map { " · \($0) min" } ?? "")")
-                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+                    .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
                 if execution?.isCompleted == true {
-                    Text("Completato · consultabile").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.sage)
+                    Text("Completato · consultabile").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.color(.success))
                 } else if workout.id == plan.todaySessionID {
-                    Text("Allenamento di oggi").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.accent)
+                    Text("Allenamento di oggi").font(.caption.weight(.semibold)).foregroundStyle(ClientClay.color(.workoutAccent))
                 }
             }
             Spacer()
-            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.secondaryInk)
+            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.color(.textSecondary))
         }
-        .clayCard(padding: 15)
+        .frame(minHeight: ClientControlSize.minimumTarget)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         .overlay {
             RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
-                .stroke(workout.id == plan.todaySessionID ? ClientClay.accent.opacity(0.38) : ClientClay.border, lineWidth: 1)
+                .stroke(ClientClay.color(workout.id == plan.todaySessionID ? .workoutAccent : .borderSubtle), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("Apre gli esercizi di \(workout.name)")
+    }
+}
+
+struct ClientGymPlanHeader: View {
+    let plan: ClientWorkoutPlan
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "list.bullet.clipboard.fill")
+                .font(.title3).foregroundStyle(ClientClay.color(.workoutAccent))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(plan.isEffective() ? "PIANO ATTIVO" : "PIANO PUBBLICATO")
+                    .font(.caption.weight(.semibold)).foregroundStyle(ClientClay.color(.textSecondary))
+                Text(plan.title).font(.headline.weight(.bold)).foregroundStyle(ClientClay.color(.textPrimary))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(plan.isEffective() ? "Settimana \(plan.currentWeek) · sola lettura" : "Disponibile dal \(plan.startsOn ?? "periodo indicato dal Trainer")")
+                    .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(plan.sessions.count) sessioni").font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(ClientClay.color(.textSecondary))
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
     }
 }
 
@@ -260,11 +254,11 @@ private struct ClientWorkoutPlanDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(isHistorical ? "PIANO PRECEDENTE" : "PIANO ATTIVO")
-                        .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(.white.opacity(0.62))
+                        .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(ClientClay.secondaryInk)
                     Text(plan.title)
-                        .font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(.white)
+                        .font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(ClientClay.ink)
                     Text([plan.startsOn, plan.endsOn].compactMap { $0 }.joined(separator: " – "))
-                        .font(.subheadline).foregroundStyle(.white.opacity(0.68))
+                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     ClientBadge(
                         text: isHistorical ? "Archivio · sola lettura" : "Piano del Trainer · sola lettura",
                         tint: isHistorical ? ClientClay.secondaryInk : ClientClay.sage,
@@ -369,7 +363,7 @@ struct ClientWorkoutSessionDetailView: View {
         let log = execution?.exercises.first { $0.exerciseID == exercise.id }
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
-                Text("\(number)").font(.caption.weight(.bold)).foregroundStyle(.white)
+                Text("\(number)").font(.caption.weight(.bold)).foregroundStyle(ClientClay.color(.textOnAccent))
                     .frame(width: 28, height: 28).background(ClientClay.accent, in: Circle())
                 VStack(alignment: .leading, spacing: 4) {
                     Text(exercise.name).font(.headline)
@@ -403,204 +397,5 @@ struct ClientWorkoutSessionDetailView: View {
             RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous)
                 .stroke(log?.isCompleted == true ? ClientClay.sage.opacity(0.30) : ClientClay.border, lineWidth: 1)
         }
-    }
-}
-
-private struct ClientExerciseDetailSheet: View {
-    let plan: ClientWorkoutPlan
-    let workout: ClientWorkoutSession
-    let exercise: ClientExercise
-
-    @EnvironmentObject private var session: ClientSessionStore
-    @Environment(\.dismiss) private var dismiss
-
-    private struct HistoryItem: Identifiable {
-        let id: UUID
-        let date: Date
-        let completedSets: Int
-        let totalSets: Int
-        let load: Double?
-        let note: String
-    }
-
-    private var history: [HistoryItem] {
-        session.activity.workouts.compactMap { execution in
-            guard let log = execution.exercises.first(where: { $0.exerciseID == exercise.id }) else { return nil }
-            let completedSets = log.sets.filter(\.isCompleted)
-            return HistoryItem(
-                id: log.id,
-                date: execution.completedAt ?? execution.startedAt,
-                completedSets: completedSets.count,
-                totalSets: log.sets.count,
-                load: completedSets.compactMap(\.actualLoadKg).filter { $0 > 0 }.max(),
-                note: log.note
-            )
-        }
-        .sorted { $0.date > $1.date }
-    }
-
-    private var loadHistory: [ClientExerciseLoadPoint] {
-        ClientActivityInsights.exerciseLoadHistory(exerciseID: exercise.id, state: session.activity)
-    }
-
-    private var detailColumns: [GridItem] {
-        [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(workout.name.uppercased())
-                            .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(ClientClay.accentSoft)
-                        Text(exercise.name)
-                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text("\(plan.title) · Settimana \(plan.currentWeek)")
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.7))
-                    }
-                    .premiumCard()
-
-                    ClientExerciseVisualCard(exercise: exercise)
-
-                    ClientSectionHeader(title: "Prescrizione", symbol: "list.bullet.clipboard.fill")
-                    LazyVGrid(columns: detailColumns, spacing: 10) {
-                        prescriptionTile(title: "Serie", value: exercise.sets ?? "—", symbol: "square.stack.3d.up.fill")
-                        prescriptionTile(title: "Ripetizioni", value: exercise.repetitions ?? "—", symbol: "repeat")
-                        prescriptionTile(title: "Recupero", value: exercise.restSeconds.map { "\($0) sec" } ?? "—", symbol: "timer")
-                        prescriptionTile(title: "Carico", value: exercise.loadKg.map { "\($0.formatted()) kg" } ?? "—", symbol: "scalemass.fill")
-                    }
-
-                    if let notes = exercise.notes, !notes.isEmpty {
-                        VStack(alignment: .leading, spacing: 9) {
-                            Label("Note operative", systemImage: "text.bubble.fill")
-                                .font(.headline).foregroundStyle(ClientClay.accent)
-                            Text(notes).font(.body).foregroundStyle(ClientClay.ink)
-                        }
-                        .clayCard()
-                    }
-
-                    if let videoURL = exercise.videoURL {
-                        Link(destination: videoURL) {
-                            HStack(spacing: 13) {
-                                Image(systemName: "play.rectangle.fill").font(.title2).foregroundStyle(ClientClay.accent)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Video dell’esercizio").font(.headline).foregroundStyle(ClientClay.ink)
-                                    Text("Apri la dimostrazione fornita dal Trainer")
-                                        .font(.caption).foregroundStyle(ClientClay.secondaryInk)
-                                }
-                                Spacer()
-                                Image(systemName: "arrow.up.right").foregroundStyle(ClientClay.accent)
-                            }
-                            .clayCard()
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    ClientSectionHeader(title: "Storico personale", detail: history.isEmpty ? "Nessun dato" : "Ultimi \(min(3, history.count))", symbol: "clock.arrow.circlepath")
-                    loadProgressCard
-                    if history.isEmpty {
-                        ClientEmptyState(symbol: "clock", title: "Ancora nessuna esecuzione", message: "Serie, carichi effettivi e note compariranno qui dopo il primo allenamento registrato.")
-                    } else {
-                        ForEach(history.prefix(3)) { item in
-                            historyRow(item)
-                        }
-                    }
-                }
-                .padding(20)
-            }
-            .clientPage()
-            .navigationTitle("Dettaglio esercizio")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Fine") { dismiss() }.fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private var loadProgressCard: some View {
-        if loadHistory.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Carico migliore per sessione", systemImage: "chart.line.uptrend.xyaxis")
-                    .font(.headline).foregroundStyle(ClientClay.accent)
-                Text("Nessun carico registrato per questo esercizio.")
-                    .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-            }
-            .clayCard()
-        } else {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("CARICO MIGLIORE PER SESSIONE")
-                            .font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(ClientClay.secondaryInk)
-                        Text("\(loadHistory.last?.loadKg.formatted() ?? "—") kg")
-                            .font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(ClientClay.ink)
-                    }
-                    Spacer()
-                    if let delta = loadDelta {
-                        ClientBadge(text: "\(delta >= 0 ? "+" : "")\(delta.formatted()) kg", tint: delta >= 0 ? ClientClay.sage : ClientClay.warning, symbol: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                    }
-                }
-                if loadHistory.count == 1 {
-                    Text("Unica sessione registrata. Completa un altro allenamento per vedere il trend.")
-                        .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
-                } else {
-                    Chart(loadHistory) { item in
-                        AreaMark(x: .value("Data", item.date), y: .value("Carico kg", item.loadKg))
-                            .interpolationMethod(.catmullRom)
-                            .foregroundStyle(LinearGradient(colors: [ClientClay.accent.opacity(0.28), ClientClay.accent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
-                        LineMark(x: .value("Data", item.date), y: .value("Carico kg", item.loadKg))
-                            .interpolationMethod(.catmullRom)
-                            .foregroundStyle(ClientClay.accent)
-                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                        PointMark(x: .value("Data", item.date), y: .value("Carico kg", item.loadKg))
-                            .foregroundStyle(ClientClay.accentSoft)
-                    }
-                    .frame(height: 170)
-                    .chartYAxisLabel("kg")
-                    .chartPlotStyle { $0.background(ClientClay.inset.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 12)) }
-                    .accessibilityLabel("Grafico del carico migliore registrato per sessione")
-                }
-            }
-            .clayCard()
-        }
-    }
-
-    private var loadDelta: Double? {
-        guard loadHistory.count > 1, let first = loadHistory.first?.loadKg, let last = loadHistory.last?.loadKg else { return nil }
-        return last - first
-    }
-
-    private func prescriptionTile(title: String, value: String, symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(ClientClay.accent)
-            Text(value).font(.system(.title3, design: .rounded, weight: .bold)).foregroundStyle(ClientClay.ink)
-            Text(title).font(.caption).foregroundStyle(ClientClay.secondaryInk)
-        }
-        .clayCard(padding: 14)
-    }
-
-    private func historyRow(_ item: HistoryItem) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Label(item.date.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("\(item.completedSets)/\(item.totalSets) serie")
-                    .font(.caption.weight(.bold)).foregroundStyle(item.completedSets == item.totalSets ? ClientClay.sage : ClientClay.warning)
-            }
-            if let load = item.load {
-                Label("Ultimo carico: \(load.formatted()) kg", systemImage: "scalemass")
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            }
-            if !item.note.isEmpty {
-                Label(item.note, systemImage: "note.text")
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
-            }
-        }
-        .clayCard(padding: 15)
     }
 }

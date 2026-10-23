@@ -201,6 +201,8 @@ struct ClientExercise: Identifiable, Codable, Equatable, Sendable {
     var movementPattern: ClientMovementPattern? = nil
     var animationKey: String? = nil
     var technique: String? = nil
+    var difficultyLevel: ClientTrainingExperience? = nil
+    var catalogMuscles: [ClientCatalogMuscleContribution]? = nil
 }
 
 struct ClientWorkoutSession: Identifiable, Codable, Equatable, Sendable {
@@ -313,6 +315,8 @@ struct ClientSnapshot: Codable, Equatable, Sendable {
     var capabilities: ClientCapabilities = .none
     var runningPlan: ClientRunningPlan? = nil
     var workoutHistory: [ClientWorkoutPlan]? = nil
+    // Client-only lifecycle state; optional to decode older cached/demo snapshots.
+    var contentStates: [ClientContentSection: ClientContentLoadState]? = nil
 
     static let empty = ClientSnapshot(
         workout: nil,

@@ -19,14 +19,14 @@ struct PersonalAgendaView: View {
                 } else {
                     ForEach(session.agenda.sorted(by: Self.sort)) { task in
                         HStack(alignment: .top, spacing: 12) {
-                            Button { session.toggleAgendaTask(task.id) } label: { Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle").font(.title2).foregroundStyle(ClientClay.sage) }.accessibilityLabel(task.isCompleted ? "Riapri \(task.title)" : "Completa \(task.title)")
+                            Button { session.toggleAgendaTask(task.id) } label: { Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle").font(.title2).foregroundStyle(ClientClay.sage).frame(width: 44, height: 44) }.accessibilityLabel(task.isCompleted ? "Riapri \(task.title)" : "Completa \(task.title)")
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(task.title).font(.headline).strikethrough(task.isCompleted)
                                 Text([task.kind.rawValue, task.priority.rawValue, task.date?.formatted(date: .abbreviated, time: .shortened)].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(ClientClay.secondaryInk)
                                 if !task.notes.isEmpty { Text(task.notes).font(.subheadline).foregroundStyle(ClientClay.secondaryInk) }
                             }
                             Spacer()
-                            Button(role: .destructive) { session.deleteAgendaTask(task.id) } label: { Image(systemName: "trash") }.accessibilityLabel("Elimina \(task.title)")
+                            Button(role: .destructive) { session.deleteAgendaTask(task.id) } label: { Image(systemName: "trash").frame(width: 44, height: 44) }.accessibilityLabel("Elimina \(task.title)")
                         }
                         .clayCard(padding: 15)
                         .overlay { RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous).stroke(task.isCompleted ? ClientClay.sage.opacity(0.30) : ClientClay.border) }

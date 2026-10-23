@@ -5,16 +5,19 @@ struct ClientNutritionView: View {
     let identity: ClientIdentity
     @EnvironmentObject private var session: ClientSessionStore
     @State private var selectedWeekday: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var currentWeekday: Int { ClientDateLogic.weekday(for: Date()) }
     private var plan: ClientNutritionPlan? { snapshot.nutrition }
-    private var nutritionFailure: String? {
-        snapshot.warnings.first { $0.hasPrefix("Nutrizione:") }
-    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let message = snapshot.contentState(for: .nutrition).failure {
+                    ClientContentFailureCard(title: "Nutrizione", message: message, isRefreshing: session.isRefreshing) {
+                        Task { await session.refresh() }
+                    }
+                }
                 if identity.mode == .standalone {
                     ClientPersonalNutritionLibraryView(allowsEditing: true)
                 } else if let plan {
@@ -23,7 +26,7 @@ struct ClientNutritionView: View {
 
                     if let notice = plan.detailNotice {
                         Label(notice, systemImage: "info.circle")
-                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk).clayCard(padding: 14)
+                            .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     }
 
                     if let day = selectedDay(in: plan) {
@@ -33,8 +36,9 @@ struct ClientNutritionView: View {
                         }
                     }
                     ClientPersonalNutritionLibraryView(allowsEditing: false)
-                } else if let nutritionFailure {
-                    ClientFailureView(message: nutritionFailure) { Task { await session.refresh() } }
+                } else if snapshot.contentState(for: .nutrition).failure != nil {
+                    // The section error above remains visible, even when a cached
+                    // plan is available; do not turn failure into an empty plan.
                     ClientPersonalNutritionLibraryView(allowsEditing: false)
                 } else {
                     ClientEmptyState(
@@ -84,7 +88,7 @@ struct ClientNutritionView: View {
                     ForEach(plan.days) { day in
                         Button {
                             ClientHaptics.selection()
-                            withAnimation(.snappy(duration: 0.22)) { selectedWeekday = day.weekday }
+                            withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { selectedWeekday = day.weekday }
                         } label: {
                             dayPill(day)
                         }
@@ -104,10 +108,11 @@ struct ClientNutritionView: View {
         return VStack(spacing: 4) {
             Text(String(day.name.prefix(3)).uppercased()).font(.caption2.weight(.bold)).tracking(0.7)
             Text("\(day.meals.count)").font(.headline.monospacedDigit().weight(.bold))
-            Text(isToday ? "OGGI" : "PASTI").font(.system(size: 9, weight: .bold))
+            Text(isToday ? "OGGI" : "PASTI").font(.caption2.weight(.bold))
         }
         .foregroundStyle(isSelected ? ClientClay.ink : ClientClay.secondaryInk)
-        .frame(width: 72, height: 72)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(minWidth: 72, minHeight: 72)
         .background(
             LinearGradient(
                 colors: isSelected
@@ -134,45 +139,25 @@ struct ClientNutritionView: View {
     private func currentDayHero(plan: ClientNutritionPlan, day: ClientNutritionDay) -> some View {
         let current = isCurrentDay(day) && plan.isEffective()
         let completed = completedMeals(in: day)
-        let calories = completed.compactMap(\.caloriesKcal).reduce(0, +)
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(day.name).font(.system(.title2, design: .rounded, weight: .heavy)).foregroundStyle(.white)
-                    Text(current ? "Oggi · puoi spuntare i pasti" : "Consultazione · sola lettura")
-                        .font(.caption.weight(.semibold)).foregroundStyle(current ? ClientClay.sage : .white.opacity(0.66))
-                }
+        let calories = completed.allSatisfy { $0.caloriesKcal != nil } ? completed.compactMap(\.caloriesKcal).reduce(0, +) : nil
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(day.name).font(.title3.weight(.bold)).foregroundStyle(ClientClay.ink)
                 Spacer()
-                Image(systemName: current ? "checkmark.circle.fill" : "lock.fill")
-                    .foregroundStyle(current ? ClientClay.sage : .white.opacity(0.65))
+                Text(day.caloriesKcal.map { "\(Int($0.rounded())) kcal" } ?? "Kcal non disponibili")
+                    .font(.subheadline.monospacedDigit()).foregroundStyle(ClientClay.secondaryInk)
             }
-            if let totalCalories = day.caloriesKcal {
-                ViewThatFits {
-                    HStack(spacing: 16) {
-                        ClientCaloriePie(value: calories, total: totalCalories, valueText: "\(Int(calories.rounded()))", detail: "di \(Int(totalCalories.rounded())) kcal", size: 92)
-                        progressCopy(completed: completed.count, total: day.meals.count, current: current)
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        ClientCaloriePie(value: calories, total: totalCalories, valueText: "\(Int(calories.rounded()))", detail: "di \(Int(totalCalories.rounded())) kcal", size: 88)
-                        progressCopy(completed: completed.count, total: day.meals.count, current: current)
-                    }
-                }
-            } else {
-                progressCopy(completed: completed.count, total: day.meals.count, current: current)
+            Text(current ? "\(completed.count) / \(day.meals.count) pasti completati" : "Consultazione · sola lettura")
+                .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
+            if current {
+                Text(calories.map { "\(Int($0.rounded())) kcal completate" } ?? "Calorie dei pasti completati non disponibili")
+                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
             }
+            if current { ClientProgressSegmentBar(completed: completed.count, total: day.meals.count, tint: ClientClay.sage) }
+            Text("P · C · G: non forniti nel piano del Trainer")
+                .font(.caption).foregroundStyle(ClientClay.secondaryInk)
         }
-        .premiumCard(tint: current ? ClientClay.sage : ClientClay.accent)
-    }
-
-    private func progressCopy(completed: Int, total: Int, current: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(current ? "\(completed) / \(total) pasti completati" : "\(total) pasti previsti")
-                .font(.headline).foregroundStyle(.white)
-            ClientProgressSegmentBar(completed: completed, total: total, tint: ClientClay.sage)
-            Text(current ? "Tocca il check accanto al pasto" : "Puoi consultare alimenti e quantità")
-                .font(.caption).foregroundStyle(.white.opacity(0.66))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 
     private func mealCard(_ meal: ClientMeal, day: ClientNutritionDay, plan: ClientNutritionPlan) -> some View {
@@ -182,7 +167,7 @@ struct ClientNutritionView: View {
             HStack(spacing: 12) {
                 if current {
                     Button {
-                        withAnimation(.snappy(duration: 0.22)) { session.toggleMealCompletion(meal.id) }
+                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { session.toggleMealCompletion(meal.id) }
                     } label: {
                         Image(systemName: completed ? "checkmark.circle.fill" : "circle")
                             .font(.title2).foregroundStyle(completed ? ClientClay.sage : ClientClay.secondaryInk)
@@ -217,9 +202,8 @@ struct ClientNutritionView: View {
                 if food.id != meal.foods.last?.id { Divider().overlay(ClientClay.border) }
             }
         }
-        .clayCard()
-        .overlay { RoundedRectangle(cornerRadius: ClientClay.radius, style: .continuous).stroke(completed ? ClientClay.sage.opacity(0.38) : ClientClay.border) }
-        .opacity(completed ? 0.90 : 1)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func selectedDay(in plan: ClientNutritionPlan) -> ClientNutritionDay? {

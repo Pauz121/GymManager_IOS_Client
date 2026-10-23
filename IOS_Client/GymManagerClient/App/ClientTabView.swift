@@ -12,6 +12,7 @@ struct ClientTabView: View {
     @EnvironmentObject private var healthKit: HealthKitStepService
     @EnvironmentObject private var avatarStore: ClientAvatarStore
     @Environment(\.scenePhase) private var scenePhase
+    @State private var didEnterBackground = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -34,22 +35,30 @@ struct ClientTabView: View {
             )
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if source == .demo {
-                Text("DEMO · nessun dato reale")
-                    .font(.caption2.weight(.bold)).tracking(0.8)
-                    .foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(ClientClay.warning, in: Capsule()).padding(.vertical, 5)
-                    .accessibilityLabel("Modalità demo, nessun dato reale")
-                    .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                if source == .demo {
+                    Text("DEMO · nessun dato reale")
+                        .font(.caption2.weight(.bold)).tracking(0.8)
+                        .foregroundStyle(ClientClay.color(.backgroundPrimary)).padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(ClientClay.warning, in: Capsule()).padding(.vertical, 5)
+                        .accessibilityLabel("Modalità demo, nessun dato reale")
+                        .allowsHitTesting(false)
+                }
+                if let message = session.refreshError {
+                    ClientContentFailureCard(title: "Aggiornamento dati", message: message, isRefreshing: session.isRefreshing) {
+                        Task { await session.refresh() }
+                    }
+                    .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 6)
+                }
             }
         }
         .task(id: identity.authUserID) { avatarStore.load(userID: identity.authUserID) }
-        .task(id: selectedTab) {
-            guard source == .live else { return }
-            await session.refresh()
-        }
         .onChange(of: scenePhase) { _, phase in
-            guard source == .live, phase == .active else { return }
+            if phase == .active { session.finishRestTimerIfElapsed() }
+            if phase == .background { didEnterBackground = true }
+            guard source == .live, phase == .active, didEnterBackground else { return }
+            didEnterBackground = false
+            guard session.canRefreshOnForeground else { return }
             Task { await session.refresh() }
         }
         .sheet(isPresented: healthConnectionPrompt) {
@@ -89,7 +98,7 @@ private struct ClientHealthConnectionPrompt: View {
                 Text("Collega Apple Salute")
                     .font(.system(.title2, design: .rounded, weight: .bold))
                     .foregroundStyle(ClientClay.ink)
-                Text("Weol può leggere i passi registrati dal tuo iPhone per aggiornare automaticamente l’attività di oggi.")
+                Text("GymManager può leggere i passi registrati dal tuo iPhone per aggiornare automaticamente l’attività di oggi.")
                     .font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -114,6 +123,11 @@ private struct ClientHealthConnectionPrompt: View {
 private struct ClientPremiumTabBar: View {
     @Binding var selection: ClientTab
     let avatar: UIImage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @State private var switchControlEnabled = UIAccessibility.isSwitchControlRunning
+    @State private var scrub = ClientTabScrubState()
+    @GestureState private var isScrubbing = false
 
     private let tabs: [(ClientTab, String, String)] = [
         (.today, "Oggi", "sun.max.fill"),
@@ -124,41 +138,89 @@ private struct ClientPremiumTabBar: View {
     ]
 
     var body: some View {
+        Group {
+            if voiceOverEnabled || switchControlEnabled {
+                tabButtons
+            } else {
+                // Limited to the bar: a recognized hold consumes the button
+                // press; an ordinary tap still uses its native Button.
+                tabButtons.highPriorityGesture(scrubGesture)
+            }
+        }
+        .padding(6)
+        .background(ClientClay.color(.surfaceElevated), in: RoundedRectangle(cornerRadius: ClientRadius.card))
+        .overlay {
+            RoundedRectangle(cornerRadius: ClientRadius.card)
+                .stroke(ClientClay.color(isScrubbing ? .brandAccent : .borderSubtle),
+                        lineWidth: isScrubbing ? ClientBorder.emphasized : ClientBorder.subtle)
+        }
+        .padding(.horizontal, ClientSpacing.control).padding(.vertical, 6)
+        .background(ClientClay.color(.backgroundPrimary))
+        .onChange(of: isScrubbing) { _, active in if !active { scrub.end() } }
+        .onChange(of: voiceOverEnabled) { _, _ in scrub.end() }
+        .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.switchControlStatusDidChangeNotification)) { _ in
+            switchControlEnabled = UIAccessibility.isSwitchControlRunning
+            scrub.end()
+        }
+    }
+
+    private var tabButtons: some View {
         HStack(spacing: 2) {
             ForEach(tabs, id: \.0) { item in
                 let tab = item.0
                 let title = item.1
                 let symbol = item.2
                 Button {
-                    ClientHaptics.selection()
-                    withAnimation(.snappy(duration: 0.22)) { selection = tab }
+                    select(tab)
                 } label: {
                     VStack(spacing: 4) {
                         if tab == .space, let avatar {
                             Image(uiImage: avatar)
                                 .resizable().scaledToFill()
                                 .frame(width: 23, height: 23).clipShape(Circle())
-                                .overlay { Circle().stroke(selection == tab ? ClientClay.accent : ClientClay.border, lineWidth: 1.5) }
+                                .overlay { Circle().stroke(ClientClay.color(selection == tab ? .brandAccent : .borderSubtle), lineWidth: 1.5) }
                         } else {
                             Image(systemName: symbol).font(.system(size: 18, weight: .semibold))
                         }
-                        Text(title).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.72)
+                        Text(title).font(.caption2.weight(.semibold))
+                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     }
-                    .foregroundStyle(selection == tab ? ClientClay.accent : ClientClay.secondaryInk)
+                    .foregroundStyle(ClientClay.color(selection == tab ? .brandAccent : .textSecondary))
                     .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(selection == tab ? ClientClay.accent.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .padding(.vertical, ClientSpacing.micro)
+                    .background(selection == tab ? ClientClay.color(.brandAccentMuted) : .clear, in: RoundedRectangle(cornerRadius: ClientRadius.control, style: .continuous))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(title)
                 .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
+                .accessibilityIdentifier("client-tab-\(title)")
             }
         }
-        .padding(6)
-        .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(ClientClay.border) }
-        .shadow(color: .black.opacity(0.44), radius: 18, y: 8)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(ClientClay.canvas.opacity(0.96))
+    }
+
+    private var scrubGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.45, maximumDistance: 12)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            .updating($isScrubbing) { value, state, _ in
+                if case .second(true, _) = value { state = true }
+            }
+            .onChanged { value in
+                guard case .second(true, .some(let drag)) = value else { return }
+                if scrub.index == nil {
+                    scrub.begin(index: tabs.firstIndex(where: { $0.0 == selection }) ?? 0)
+                }
+                if let index = scrub.update(horizontal: Double(drag.translation.width),
+                                            vertical: Double(drag.translation.height), count: tabs.count) {
+                    select(tabs[index].0)
+                }
+            }
+            .onEnded { _ in scrub.end() }
+    }
+
+    private func select(_ tab: ClientTab) {
+        guard selection != tab else { return }
+        ClientHaptics.selection()
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { selection = tab }
     }
 }

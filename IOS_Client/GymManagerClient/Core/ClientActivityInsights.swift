@@ -67,6 +67,17 @@ enum ClientActivityPeriod: Int, CaseIterable, Identifiable, Hashable, Sendable {
 }
 
 enum ClientActivityInsights {
+    /// A real completed set from a previous session, not today's unfinished execution.
+    static func previousExerciseLoad(exerciseID: UUID, state: ClientActivityState, before startedAt: Date) -> Double? {
+        state.workouts.filter { $0.startedAt < startedAt }.sorted { $0.startedAt > $1.startedAt }
+            .compactMap { execution in
+                execution.exercises.first(where: { $0.exerciseID == exerciseID })?.sets
+                    .filter { $0.isCompleted && ($0.actualLoadKg ?? 0) > 0 }
+                    .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+                    .first?.actualLoadKg
+            }.first
+    }
+
     static func exerciseLoadHistory(exerciseID: UUID, state: ClientActivityState) -> [ClientExerciseLoadPoint] {
         state.workouts.compactMap { execution in
             guard let log = execution.exercises.first(where: { $0.exerciseID == exerciseID }),

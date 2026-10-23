@@ -13,6 +13,8 @@ struct PersonalSpaceView: View {
             VStack(alignment: .leading, spacing: 18) {
                 ClientPageTitle("Il tuo spazio", eyebrow: "Personale", subtitle: "Agenda privata, novità del percorso e account.")
                 profileLink
+                NavigationLink { ClientAppearanceView() } label: { Label("Aspetto", systemImage: "circle.lefthalf.filled").frame(minHeight: 44) }
+                .buttonStyle(.plain).foregroundStyle(ClientClay.ink)
                 emailVerificationCard
                 destination("La mia Agenda", detail: "Attività e promemoria salvati solo su questo dispositivo", symbol: "checklist") { PersonalAgendaView(appointments: snapshot.appointments) }
                 destination("Aggiornamenti", detail: "Le novità del tuo percorso · non è una chat", symbol: "bell.badge") { ClientUpdatesView(updates: snapshot.updates) }

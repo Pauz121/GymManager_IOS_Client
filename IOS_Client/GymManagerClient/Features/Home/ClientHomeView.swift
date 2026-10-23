@@ -9,6 +9,7 @@ struct ClientHomeView: View {
     @EnvironmentObject private var healthKit: HealthKitStepService
     @EnvironmentObject private var avatarStore: ClientAvatarStore
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var presentedWorkout: ClientWorkoutSession?
 
     private var activeWorkoutPlan: ClientWorkoutPlan? {
@@ -57,16 +58,23 @@ struct ClientHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                stepsCard
-                ClientSectionHeader(title: "Priorità", detail: "Oggi", symbol: "bolt.fill")
-                workoutCard
-                nutritionCard
-                if identity.mode == .standalone { standaloneActions }
+                header
+                Text(dayStatusHeadline).font(.subheadline).foregroundStyle(ClientClay.color(.textSecondary))
+                Text("Le tue priorità").font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
+                ClientContentGate(section: .workout, state: session.contentState(for: .workout), isRefreshing: session.isRefreshing,
+                                  retry: { Task { await session.refresh() } }) { workoutCard }
+                ClientContentGate(section: .nutrition, state: session.contentState(for: .nutrition), isRefreshing: session.isRefreshing,
+                                  retry: { Task { await session.refresh() } }) { nutritionCard }
                 contextCards
+                stepsCard
+                if identity.mode == .standalone { standaloneActions }
 
-                ForEach(snapshot.warnings, id: \.self) { warning in
-                    Label(warning, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote).foregroundStyle(ClientClay.warning).clayCard(padding: 14)
+                ForEach([ClientContentSection.appointments, .progress], id: \.self) { section in
+                    if let message = session.contentState(for: section).failure {
+                        ClientContentFailureCard(title: section.title, message: message, isRefreshing: session.isRefreshing) {
+                            Task { await session.refresh() }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, ClientClay.pagePadding).padding(.vertical, 18)
@@ -105,7 +113,7 @@ struct ClientHomeView: View {
                 ClientProfileAvatar(
                     image: avatarStore.image(for: identity.authUserID),
                     initials: initials,
-                    size: 52
+                    size: 44
                 )
             }
             .buttonStyle(.plain)
@@ -113,15 +121,12 @@ struct ClientHomeView: View {
             .accessibilityHint("Mostra profilo, foto e sicurezza")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("OGGI")
-                    .font(.caption.weight(.bold)).tracking(1.1).foregroundStyle(ClientClay.accent)
                 Text("Ciao, \(identity.firstName)")
-                    .font(.system(.title2, design: .rounded, weight: .heavy))
-                    .foregroundStyle(ClientClay.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(ClientClay.color(.textPrimary))
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                    .font(.caption).foregroundStyle(ClientClay.secondaryInk)
+                    .font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
             }
             Spacer(minLength: 0)
         }
@@ -133,6 +138,9 @@ struct ClientHomeView: View {
     }
 
     private var dayStatusHeadline: String {
+        if session.readPhase == .authBootstrap || session.readPhase == .idle { return "Prepariamo la tua giornata" }
+        if snapshot.loadPhase == .error { return "Alcuni dati sono da aggiornare" }
+        if snapshot.loadPhase == .loading { return "Carichiamo la tua giornata" }
         if todayWorkoutExecution?.isCompleted == true, todayMealProgress.completed == todayMealProgress.total, todayMealProgress.total > 0 {
             return "Giornata quasi completata"
         }
@@ -148,12 +156,12 @@ struct ClientHomeView: View {
     private func dayStatusMetric(value: String, title: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Image(systemName: symbol).font(.caption.weight(.bold)).foregroundStyle(ClientClay.accentSoft)
-            Text(value).font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.72)
-            Text(title).font(.caption2).foregroundStyle(.white.opacity(0.66)).lineLimit(1)
+            Text(value).font(.subheadline.weight(.bold)).foregroundStyle(ClientClay.ink).lineLimit(1).minimumScaleFactor(0.72)
+            Text(title).font(.caption2).foregroundStyle(ClientClay.secondaryInk).lineLimit(1)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(ClientClay.surfaceElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder private var workoutCard: some View {
@@ -252,12 +260,12 @@ struct ClientHomeView: View {
     private func mealToggle(_ meal: ClientMeal) -> some View {
         let completed = session.activity.isMealCompleted(meal.id)
         return Button {
-            withAnimation(.snappy(duration: 0.3)) { session.toggleMealCompletion(meal.id) }
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) { session.toggleMealCompletion(meal.id) }
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: completed ? "checkmark" : "circle")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(completed ? .white : ClientClay.secondaryInk)
+                    .foregroundStyle(completed ? ClientClay.sage : ClientClay.secondaryInk)
                     .frame(width: 32, height: 32)
                     .background(completed ? ClientClay.sage : ClientClay.surfaceElevated, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
@@ -300,36 +308,18 @@ struct ClientHomeView: View {
     }
 
     private func dailyHero(stepCount: Int?, target: Int, sourceDetail: String, actionTitle: String? = nil) -> some View {
-        let meals = todayMealProgress
-        let pendingAgenda = homeAgendaTasks.filter { !$0.isCompleted }.count
-        let workoutStatus = todayWorkout == nil ? "Riposo" : todayWorkoutExecution?.isCompleted == true ? "Fatto" : "Da fare"
-        let workoutSymbol = todayWorkoutExecution?.isCompleted == true ? "checkmark" : todayWorkout == nil ? "moon.fill" : "dumbbell.fill"
-
-        return VStack(alignment: .leading, spacing: 16) {
-            header
-            Divider().overlay(.white.opacity(0.13))
-            VStack(alignment: .leading, spacing: 5) {
-                Text("IL TUO OGGI").font(.caption.weight(.bold)).tracking(1.3).foregroundStyle(.white.opacity(0.66))
-                Text(dayStatusHeadline).font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(.white)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: ClientSpacing.control) {
+                stepsRing(stepCount: stepCount, target: target)
+                stepsCopy(sourceDetail: sourceDetail, actionTitle: actionTitle)
             }
-            ViewThatFits {
-                HStack(spacing: 18) { stepsRing(stepCount: stepCount, target: target); stepsCopy(sourceDetail: sourceDetail, actionTitle: actionTitle) }
-                VStack(alignment: .leading, spacing: 14) { stepsRing(stepCount: stepCount, target: target); stepsCopy(sourceDetail: sourceDetail, actionTitle: actionTitle) }
-            }
-            ViewThatFits {
-                HStack(spacing: 8) {
-                    dayStatusMetric(value: workoutStatus, title: "Workout", symbol: workoutSymbol)
-                    dayStatusMetric(value: meals.total == 0 ? "—" : "\(meals.completed)/\(meals.total)", title: "Pasti", symbol: "fork.knife")
-                    dayStatusMetric(value: "\(pendingAgenda)", title: "Attività", symbol: "checklist")
-                }
-                VStack(spacing: 8) {
-                    dayStatusMetric(value: workoutStatus, title: "Workout", symbol: workoutSymbol)
-                    dayStatusMetric(value: meals.total == 0 ? "—" : "\(meals.completed)/\(meals.total)", title: "Pasti", symbol: "fork.knife")
-                    dayStatusMetric(value: "\(pendingAgenda)", title: "Attività", symbol: "checklist")
-                }
+            VStack(alignment: .leading, spacing: ClientSpacing.control) {
+                stepsRing(stepCount: stepCount, target: target)
+                stepsCopy(sourceDetail: sourceDetail, actionTitle: actionTitle)
             }
         }
-        .premiumCard(padding: 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clayCard(padding: ClientSpacing.control, appearance: .adaptive)
         .accessibilityElement(children: .contain)
     }
 
@@ -337,15 +327,15 @@ struct ClientHomeView: View {
         ClientCircularProgress(
             value: Double(stepCount ?? 0), total: Double(target), title: "Passi di oggi",
             valueText: stepCount?.formatted() ?? "—", detail: "di \(target.formatted())",
-            tint: stepCount.map { $0 >= target ? ClientClay.sage : ClientClay.accent } ?? ClientClay.tertiaryInk,
-            size: 118, textColor: .white, detailColor: .white.opacity(0.66)
+            tint: stepCount.map { $0 >= target ? ClientClay.color(.success) : ClientClay.color(.brandAccent) } ?? ClientClay.color(.textTertiary),
+            size: 88, textColor: ClientClay.color(.textPrimary), detailColor: ClientClay.color(.textSecondary)
         )
     }
 
     private func stepsCopy(sourceDetail: String, actionTitle: String?) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(.white)
-            Text(sourceDetail).font(.caption).foregroundStyle(.white.opacity(0.68))
+            Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.color(.textPrimary))
+            Text(sourceDetail).font(.caption).foregroundStyle(ClientClay.color(.textSecondary))
             if let actionTitle {
                 Button(actionTitle) { Task { await healthKit.requestAccessAndRefresh() } }
                     .font(.subheadline.weight(.bold)).foregroundStyle(ClientClay.accentSoft)
@@ -413,8 +403,8 @@ struct ClientHomeView: View {
 
     private func stepsUnavailable(_ message: String, actionTitle: String?, inverse: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(inverse ? Color.white : ClientClay.accent)
-            Text(message).font(.subheadline).foregroundStyle(inverse ? Color.white.opacity(0.7) : ClientClay.secondaryInk)
+            Label("Passi di oggi", systemImage: "figure.walk").font(.headline).foregroundStyle(ClientClay.ink)
+            Text(message).font(.subheadline).foregroundStyle(ClientClay.secondaryInk)
             if let actionTitle {
                 Button(actionTitle) { Task { await healthKit.requestAccessAndRefresh() } }
                     .font(.subheadline.weight(.semibold)).foregroundStyle(inverse ? ClientClay.accentSoft : ClientClay.accent)

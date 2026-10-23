@@ -1,0 +1,20 @@
+[
+  {
+    "path": "Core/ClientSessionStore.swift",
+    "start": "    func beginWorkout",
+    "end": "",
+    "sha256": "CE7D4AD7C7898B135E6D293DB3241CF28801A078B6F9E96892789835A3254B77"
+  },
+  {
+    "path": "Core/ClientPersonalRepository.swift",
+    "start": "    func activeWorkoutPlans",
+    "end": "",
+    "sha256": "140968AB9169351B01559E44A6ABD8F4EBFEE30B8C483AAB74E79D47CD08454E"
+  },
+  {
+    "path": "Core/ClientPersonalContent.swift",
+    "start": "struct ClientPersonalFood",
+    "end": "",
+    "sha256": "B19C890DAD74327D6FE9016B88D1A4E3D2CE05B04318642BB7BEBEE75052AC96"
+  }
+]

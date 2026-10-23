@@ -69,15 +69,15 @@ struct ClientProfileAvatar: View {
             } else {
                 Text(initials)
                     .font(.system(size: size * 0.34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ClientClay.color(.textOnAccent))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(ClientClay.accent)
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.white.opacity(0.28), lineWidth: 2))
-        .shadow(color: .black.opacity(0.34), radius: 7, y: 4)
+        .overlay(Circle().stroke(ClientClay.border, lineWidth: 2))
+        .shadow(color: ClientClay.shadow.opacity(0.18), radius: 7, y: 4)
         .accessibilityLabel(image == nil ? "Foto profilo non impostata" : "Foto profilo")
     }
 }

@@ -61,9 +61,14 @@ struct ClientExerciseVisualResolver {
             primaryMuscles: exercise.primaryMuscles ?? [],
             secondaryMuscles: exercise.secondaryMuscles ?? [],
             movementPattern: exercise.movementPattern,
-            animationKey: exercise.animationKey
+            animationKey: exercise.animationKey, difficultyLevel: exercise.difficultyLevel,
+            catalogMuscles: exercise.catalogMuscles
         ))
-        let asset = Self.assets[metadata.animationKey ?? ""]
+        let normalizedName = ClientExerciseMetadataNormalizer.normalize(exercise.name)
+        // Do not show a bench/cable demonstration for an unsupported bodyweight/variant movement.
+        let needsSpecificMotion = ["push up", "piegamenti", "trazioni", "pull up", "french press", "chest press", "panca inclinata"]
+            .contains(where: normalizedName.contains)
+        let asset = needsSpecificMotion ? nil : Self.assets[metadata.animationKey ?? ""]
         return ClientExerciseVisualDescriptor(
             assetKey: asset?.key ?? "static_body_v1",
             version: asset?.version ?? 1,
