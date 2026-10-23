@@ -1,5 +1,8 @@
 # IOS_Client — consolidated Mac acceptance backlog, Phases1–7
 
+## LATEST — reported Xcode type-check failure / local repair,2026-10-23
+User-reported ClientNutritionFoodPolicy.swift:125 failed to type-check the30-field fingerprint expression. Localfix splits it into small explicitlytyped steps;all30expressions/order/UTF8framing/nilmarkers/sort/newlineseparator/SHA256 retained. 50focusedSOURCEchecks+all9prior suitesPASS;this is NOT a Swiftcompile. SixClientNutritionFingerprintTests PF01–PF06definitions added:reviewedlegacygolden,Unicode+nilgolden,empty,unreviewed,order,fieldchange. NOW323native definitions/25testSwiftfilesinclfixtures. Nativebuild/XCTestNOTRUN. User authorized publication aftersourceQA. Pull the compiler-fix commit newer than d417a7d before native acceptance. NEXT:afterauthorizedtransferofexactfixedfiles,Macbuildapp+Widgetandrun6newtestsplusprior317. Do not assumeoldGitHubd417a7dcontainsfix. Historical317countsbelowpre-dateaddition.
+
 ## CURRENT — Phase6+7 final source integration,2026-10-23
 This section supersedes earlier STOP/theme/publication status notes,NOT historical evidence. Source program may be committed/pushed only after fullsourceQA;no production/AppStore/native acceptance inferred. Older detailed scenarios below remain mandatory.
 Windows canonical:pwsh -NoProfile -File IOS_Client/scripts/validate-ui-final.ps1 -AllStatic.

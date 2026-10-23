@@ -120,24 +120,45 @@ enum ClientNutritionFoodPolicy {
     }
 
     static func fingerprint(_ catalog: [ClientFoodCatalogItem]) -> String {
-        digest(catalog.sorted { $0.id.uuidString < $1.id.uuidString }.map { item in
+        let sortedCatalog: [ClientFoodCatalogItem] = catalog.sorted {
+            $0.id.uuidString < $1.id.uuidString
+        }
+        let records: [String] = sortedCatalog.map { item -> String in
             guard let e = item.nutritionEvidence else { return item.id.uuidString + ":unreviewed" }
-            return [
+
+            // Keep the existing field order and UTF-8 framing byte-for-byte.
+            // Small, explicitly typed expressions avoid Swift's type-checker limit.
+            var fields: [String] = [
                 item.id.uuidString, item.name, item.provider ?? "", String(item.caloriesPer100g),
-                String(item.proteinPer100g ?? -1), String(item.carbsPer100g ?? -1), String(item.fatPer100g ?? -1),
-                String(item.gramsPerPiece ?? -1), e.source.rawValue, e.sourceID, e.sourceURL, e.reviewVersion,
-                e.reviewReference, e.datasetRevision, e.cacheProvenance, e.cacheRevision, String(e.sourceServingAmount),
-                e.sourceServingUnit, e.foodState, e.roles.map(\.rawValue).sorted().joined(separator: ","),
-                e.allowedMeals.map(\.rawValue).sorted().joined(separator: ","),
-                e.compatiblePatterns.map(\.rawValue).sorted().joined(separator: ","),
-                e.assessedAllergens.map(\.rawValue).sorted().joined(separator: ","),
-                e.containsAllergens.map(\.rawValue).sorted().joined(separator: ","),
-                e.traceAllergens.map(\.rawValue).sorted().joined(separator: ","),
-                e.assessedIntolerances.map(\.rawValue).sorted().joined(separator: ","),
-                e.incompatibleIntolerances.map(\.rawValue).sorted().joined(separator: ","),
-                String(e.portion.minimumGrams), String(e.portion.maximumGrams), String(e.portion.stepGrams)
-            ].map { String($0.utf8.count) + ":" + $0 }.joined()
-        }.joined(separator: "\n"))
+                String(item.proteinPer100g ?? -1), String(item.carbsPer100g ?? -1),
+                String(item.fatPer100g ?? -1), String(item.gramsPerPiece ?? -1)
+            ]
+            let provenance: [String] = [
+                e.source.rawValue, e.sourceID, e.sourceURL, e.reviewVersion, e.reviewReference,
+                e.datasetRevision, e.cacheProvenance, e.cacheRevision, String(e.sourceServingAmount),
+                e.sourceServingUnit, e.foodState
+            ]
+            fields.append(contentsOf: provenance)
+            fields.append(e.roles.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.allowedMeals.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.compatiblePatterns.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.assessedAllergens.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.containsAllergens.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.traceAllergens.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.assessedIntolerances.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(e.incompatibleIntolerances.map(\.rawValue).sorted().joined(separator: ","))
+            fields.append(String(e.portion.minimumGrams))
+            fields.append(String(e.portion.maximumGrams))
+            fields.append(String(e.portion.stepGrams))
+
+            let framedFields: [String] = fields.map { field -> String in
+                let byteCount: String = String(field.utf8.count)
+                return byteCount + ":" + field
+            }
+            return framedFields.joined()
+        }
+        let serializedCatalog: String = records.joined(separator: "\n")
+        return digest(serializedCatalog)
     }
 
     static func digest(_ value: String) -> String {
